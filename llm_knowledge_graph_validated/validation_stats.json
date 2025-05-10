@@ -1,0 +1,9 @@
+{
+  "processed_files": 65,
+  "validated_triplets": 5725,
+  "rejected_triplets": -112,
+  "errors": 0,
+  "model_usage": {
+    "gemini-2.0-flash": 308
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "has_symptom": 1621,
+  "caused_by": 754,
+  "treated_with": 912,
+  "diagnosed_by": 253,
+  "prevented_by": 207,
+  "risk_factor": 705,
+  "complication_of": 377,
+  "affects": 823,
+  "contraindicates": 73
+}

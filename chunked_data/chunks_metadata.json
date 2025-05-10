@@ -1,0 +1,266 @@
+{
+  "total_diseases": 65,
+  "total_chunks": 491,
+  "diseases": [
+    {
+      "name": "BỆNH APTHOSE (Apthosis)",
+      "chunk_count": 6
+    },
+    {
+      "name": "BỌNG NƯỚC DẠNG PEMPHIGUS (Pemphigoid)",
+      "chunk_count": 7
+    },
+    {
+      "name": "VIÊM DA TIẾP XÚC DO CÔN TRÙNG",
+      "chunk_count": 5
+    },
+    {
+      "name": "BỆNH VẢY PHẤN ĐỎ NANG LÔNG (Pityriasis rubra pilaris)",
+      "chunk_count": 6
+    },
+    {
+      "name": "BỆNH HẠT CƠM (Warts)",
+      "chunk_count": 8
+    },
+    {
+      "name": "VIÊM DA CƠ ĐỊA (Atopic dermatitis)",
+      "chunk_count": 8
+    },
+    {
+      "name": "NẤM TÓC",
+      "chunk_count": 7
+    },
+    {
+      "name": "BỆNH ZONA",
+      "chunk_count": 9
+    },
+    {
+      "name": "BỆNH DA DO NẤM SỢI",
+      "chunk_count": 8
+    },
+    {
+      "name": "SARCOIDOSIS",
+      "chunk_count": 6
+    },
+    {
+      "name": "BỆNH VẢY CÁ MẮC PHẢI",
+      "chunk_count": 1
+    },
+    {
+      "name": "BỆNH CHỐC (Impetigo)",
+      "chunk_count": 8
+    },
+    {
+      "name": "BỆNH PHONG (Leprosy)",
+      "chunk_count": 9
+    },
+    {
+      "name": "TRỨNG CÁ (Acne)",
+      "chunk_count": 13
+    },
+    {
+      "name": "BỆNH BẠCH BIẾN (Vitiligo)",
+      "chunk_count": 6
+    },
+    {
+      "name": "HỘI CHỨNG BONG VẢY DA DO TỤ CẦU (STAPHYLOCOCCAL SCALDED SKIN SYNDROME - SSSS)",
+      "chunk_count": 4
+    },
+    {
+      "name": "U XƠ THẦN KINH (Neurofibromatosis)",
+      "chunk_count": 4
+    },
+    {
+      "name": "BỆNH DA NGHỀ NGHIỆP (Occupational skin diseases)",
+      "chunk_count": 10
+    },
+    {
+      "name": "U MỀM LÂY (Molluscum Contagiosum)",
+      "chunk_count": 5
+    },
+    {
+      "name": "VIÊM DA DẦU (Seborrheic Dermatitis)",
+      "chunk_count": 5
+    },
+    {
+      "name": "BỆNH DA DO ÁNH SÁNG (Photodermatosis)",
+      "chunk_count": 5
+    },
+    {
+      "name": "VIÊM DA ĐẦU CHI - RUỘT (Acrodermatitis enteropathica)",
+      "chunk_count": 5
+    },
+    {
+      "name": "DỊ SỪNG NANG LÔNG (Follicular dyskeratosis)",
+      "chunk_count": 6
+    },
+    {
+      "name": "NHIỄM CHLAMYDIA TRACHOMATIS SINH DỤC-TIẾT NIỆU (Chlamydia trachomatis infections)",
+      "chunk_count": 7
+    },
+    {
+      "name": "HỘI CHỨNG LYELL",
+      "chunk_count": 10
+    },
+    {
+      "name": "VIÊM ÂM ĐẠO DO TRÙNG ROI (Trichomoniasis)",
+      "chunk_count": 6
+    },
+    {
+      "name": "SẨN NGỨA (Prurigo)",
+      "chunk_count": 6
+    },
+    {
+      "name": "VẢY PHẤN HỒNG GIBERT (Pityriasis rosea of Gibert)",
+      "chunk_count": 7
+    },
+    {
+      "name": "HỘI CHỨNG RAYNAUD",
+      "chunk_count": 12
+    },
+    {
+      "name": "UNG THƯ TẾ BÀO ĐÁY (Basal cell carcinoma - BCC)",
+      "chunk_count": 9
+    },
+    {
+      "name": "BỆNH SÙI MÀO GÀ SINH DỤC (Genital wart)",
+      "chunk_count": 9
+    },
+    {
+      "name": "ĐỎ DA TOÀN THÂN (Erythroderma)",
+      "chunk_count": 10
+    },
+    {
+      "name": "HERPES SINH DỤC (Genital herpes simplex viral infections)",
+      "chunk_count": 5
+    },
+    {
+      "name": "BỆNH VẢY NẾN (Psoriasis)",
+      "chunk_count": 12
+    },
+    {
+      "name": "HỘI CHỨNG DRESS (The Drug Reaction with Eosinophilia and Systemic Symptoms)",
+      "chunk_count": 5
+    },
+    {
+      "name": "UNG THƯ TẾ BÀO HẮC TỐ (Malignant melanoma)",
+      "chunk_count": 8
+    },
+    {
+      "name": "Á VẢY NẾN VÀ VẢY PHẤN DẠNG LICHEN (Parapsoriasis and Pityriasis Lichenoides)",
+      "chunk_count": 7
+    },
+    {
+      "name": "NHỌT",
+      "chunk_count": 6
+    },
+    {
+      "name": "RÁM MÁ (Chloasma)",
+      "chunk_count": 8
+    },
+    {
+      "name": "BỆNH GHẺ (Scabies)",
+      "chunk_count": 7
+    },
+    {
+      "name": "U ỐNG TUYẾN MỒ HÔI (Syringoma)",
+      "chunk_count": 5
+    },
+    {
+      "name": "HỘI CHỨNG STEVENS-JOHNSON (Stevens-Johnson syndrome - SJS)",
+      "chunk_count": 11
+    },
+    {
+      "name": "BỆNH VIÊM DA DẠNG HERPES CỦA DUHRING-BROCQ (Dermatitis Herpetiformis)",
+      "chunk_count": 8
+    },
+    {
+      "name": "LANG BEN",
+      "chunk_count": 5
+    },
+    {
+      "name": "BỆNH LUPUS BAN ĐỎ (Lupus Erythematosus)",
+      "chunk_count": 12
+    },
+    {
+      "name": "BỆNH MÀY ĐAY (Urticaria)",
+      "chunk_count": 10
+    },
+    {
+      "name": "VIÊM DA TIẾP XÚC DỊ ỨNG (Allergic Contact Dermatitis)",
+      "chunk_count": 8
+    },
+    {
+      "name": "NẤM MÓNG (Onychomycosis)",
+      "chunk_count": 8
+    },
+    {
+      "name": "UNG THƯ TẾ BÀO VẢY (Squamous cell carcinoma-SCC)",
+      "chunk_count": 11
+    },
+    {
+      "name": "DÀY SỪNG LÒNG BÀN TAY, BÀN CHÂN DI TRUYỀN",
+      "chunk_count": 4
+    },
+    {
+      "name": "BỆNH PELLAGRA",
+      "chunk_count": 22
+    },
+    {
+      "name": "SẠM DA",
+      "chunk_count": 7
+    },
+    {
+      "name": "BỆNH GAI ĐEN (Acanthosis nigricans)",
+      "chunk_count": 7
+    },
+    {
+      "name": "BỆNH LICHEN PHẲNG (Lichen planus)",
+      "chunk_count": 7
+    },
+    {
+      "name": "HỒNG BAN ĐA DẠNG (Erythema multiforme)",
+      "chunk_count": 5
+    },
+    {
+      "name": "VIÊM ÂM HỘ-ÂM ĐẠO DO NẤM CANDIDA (Vulvovaginal Candidiasis)",
+      "chunk_count": 5
+    },
+    {
+      "name": "VIÊM NANG LÔNG (Folliculitis)",
+      "chunk_count": 5
+    },
+    {
+      "name": "PEMPHIGUS",
+      "chunk_count": 9
+    },
+    {
+      "name": "BỆNH PORPHYRIN DA",
+      "chunk_count": 7
+    },
+    {
+      "name": "BỆNH GIANG MAI (Syphilis)",
+      "chunk_count": 13
+    },
+    {
+      "name": "LY THƯỢNG BÌ BỌNG NƯỚC BẨM SINH (Inherited epidermolysis bullosa)",
+      "chunk_count": 7
+    },
+    {
+      "name": "BỆNH LẬU (Gonorrhea)",
+      "chunk_count": 8
+    },
+    {
+      "name": "BỆNH LAO DA",
+      "chunk_count": 9
+    },
+    {
+      "name": "VIÊM BÌ CƠ (Dermatomyositis)",
+      "chunk_count": 6
+    },
+    {
+      "name": "BỆNH DA VÀ NIÊM MẠC DO CANDIDA (Candidosis)",
+      "chunk_count": 7
+    }
+  ]
+}
