@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from app.models.request import DiagnosisRequest
 from app.models.response import DiagnosisResponse, ContextResponse
-from app.services.diagnosis_service import get_diagnosis, get_context
+from app.services.diagnosis_service import (
+    get_diagnosis, get_context, image_diagnosis_only_async
+)
 from app.core.logging import logger
+import traceback
 
 router = APIRouter()
 
@@ -43,3 +46,19 @@ async def get_diagnosis_context(request: DiagnosisRequest):
     except Exception as e:
         logger.error(f"Lỗi khi lấy context: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Lỗi khi lấy context: {str(e)}") 
+
+@router.post("/image-only", response_model=DiagnosisResponse)
+async def get_image_only_diagnosis(request: DiagnosisRequest):
+    """
+    Nhận vào image_base64, trả về chẩn đoán chi tiết
+    """
+    try:
+        if not request.image_base64:    
+            raise HTTPException(status_code=400, detail="Cần cung cấp image_base64")
+            
+        logger.app_info(f"Nhận request chẩn đoán: image={bool(request.image_base64)}")
+        all_labels, label_documents = await image_diagnosis_only_async(request.image_base64)
+        return ContextResponse(labels=all_labels, documents=label_documents)
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Lỗi khi chẩn đoán: {str(e)}")

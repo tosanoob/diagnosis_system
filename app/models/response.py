@@ -21,7 +21,7 @@ class ContextResponse(BaseModel):
     Response model for context endpoint
     """
     labels: List[Tuple[str, float]] = Field(..., description="The list of diagnosis labels")
-    documents: List[str] = Field(..., description="The list of documents")
+    documents: List[str | List[str]] = Field(..., description="The list of documents")
 
 class HealthResponse(BaseModel):
     """

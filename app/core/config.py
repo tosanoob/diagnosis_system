@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     RELOAD: bool = False
     WORKERS: int = 1
     
+    # Ngrok configuration
+    NGROK_ENABLED: bool = False
+    NGROK_AUTHTOKEN: Optional[str] = None
+    NGROK_URL: Optional[str] = None
+    
     # Đường dẫn thư mục
     CHROMA_DATA_PATH: str = "runtime/chroma_data"
     MEDIMAGEINSIGHTS_MODEL_DIR: str = "runtime/models/MedImageInsights/2024.09.27"
@@ -39,6 +44,13 @@ class Settings(BaseSettings):
     EMBEDDING_URL: Optional[str] = None
     EMBEDDING_API_KEY: Optional[str] = None
     EMBEDDING_MODEL: str = "bge-m3"
+    
+    # SQLite configuration
+    SQLITE_DB_PATH: str = "runtime/db.sqlite3"
+    SQLITE_ECHO: bool = False
+    
+    # Image configuration
+    IMAGE_BASE_URL: str = "runtime/image/"
 
     @field_validator("GEMINI_API_KEY", "NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "EMBEDDING_URL", "EMBEDDING_API_KEY")
     def validate_not_none(cls, v, info):

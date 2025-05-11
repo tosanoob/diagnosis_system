@@ -111,7 +111,34 @@ Khi chạy container, bạn có thể chỉ định các tham số sau:
 - `--host`: Host để bind server (mặc định: 0.0.0.0)
 - `--port`: Port để bind server (mặc định: 8123)
 - `--reload`: Bật chế độ tự động reload khi code thay đổi
-- `--workers`: Số lượng worker processes (mặc định: 1)
+- `--workers`: Số lượng worker processes (mặc định: 1) 
+- `--enable-ngrok`: Bật tích hợp ngrok tunnel để public API ra internet
+
+## Tích hợp ngrok
+
+Ứng dụng hỗ trợ tích hợp ngrok để dễ dàng public API server ra internet một cách an toàn, hữu ích cho việc demo và testing.
+
+### Cấu hình ngrok
+
+1. Đăng ký tài khoản tại [ngrok.com](https://ngrok.com) và lấy authtoken
+2. Thêm các biến sau vào file `.env`:
+   ```
+   NGROK_ENABLED=True
+   NGROK_AUTHTOKEN=your_ngrok_authtoken_here
+   NGROK_URL=your_custom_subdomain.ngrok.io  # Tùy chọn, yêu cầu ngrok Pro
+   ```
+
+### Chạy ứng dụng với ngrok
+
+```bash
+# Chạy ứng dụng bằng tham số command line
+python -m app.main --enable-ngrok
+
+# Hoặc với Docker
+docker run -p 8123:8123 -e NGROK_ENABLED=True -e NGROK_AUTHTOKEN=your_token yourusername/query_system:latest --enable-ngrok
+```
+
+Khi khởi động, ứng dụng sẽ tạo tunnel ngrok và hiển thị URL public trong logs.
 
 ## Tổ chức lại cấu trúc dự án theo mô hình FastAPI chuẩn
 

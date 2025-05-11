@@ -20,6 +20,9 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - CHROMA_DATA_PATH=/app/runtime/chroma_data
       - DEBUG=True
+      - NGROK_ENABLED=${NGROK_ENABLED:-False}
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+      - NGROK_URL=${NGROK_URL}
     depends_on:
       - chromadb
     restart: unless-stopped

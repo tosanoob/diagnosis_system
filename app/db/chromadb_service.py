@@ -108,7 +108,7 @@ class ChromaDBService:
         return results
 
     def retrieve_image_info(self, image_base64: str | list[str],
-                            n_results: int = 3,
+                            n_results: int = 5,
                             threshold: float = 0.5) -> dict:
         """
         Hàm tìm ảnh gần nhất với hình ảnh gửi, trả về hình ảnh tương tự, thông tin hình ảnh.

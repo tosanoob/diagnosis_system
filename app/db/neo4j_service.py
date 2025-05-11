@@ -66,7 +66,7 @@ class Neo4jService:
             
             # Kiểm tra kết nối
             self.neo4j_driver.verify_connectivity()
-            logger.info(f"Kết nối thành công đến Neo4j: {self.neo4j_uri}")
+            logger.app_info(f"Kết nối thành công đến Neo4j: {self.neo4j_uri}")
             
             return True
         except Exception as e:
@@ -77,7 +77,7 @@ class Neo4jService:
         """Đóng kết nối với Neo4j"""
         if self.neo4j_driver:
             self.neo4j_driver.close()
-            logger.info("Đã đóng kết nối Neo4j")
+            logger.app_info("Đã đóng kết nối Neo4j")
     
     def query_disease_symptoms(self, disease_query: str, limit: int = None) -> List[Dict]:
         """

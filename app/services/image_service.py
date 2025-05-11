@@ -26,14 +26,14 @@ sys.path.insert(0, MEDIMAGEINSIGHTS_PATH)
 sys.path.insert(0, os.path.join(MEDIMAGEINSIGHTS_PATH, "MedImageInsight"))
 
 # Log đường dẫn để debug
-logger.info(f"MedImageInsights path: {MEDIMAGEINSIGHTS_PATH}")
-logger.info(f"Current sys.path: {sys.path}")
+logger.app_info(f"MedImageInsights path: {MEDIMAGEINSIGHTS_PATH}")
+logger.app_info(f"Current sys.path: {sys.path}")
 
 try:
     # Import trực tiếp từ file, không phải từ package
     sys.path.insert(0, MEDIMAGEINSIGHTS_PATH)
     from medimageinsightmodel import MedImageInsight
-    logger.info("Successfully imported MedImageInsightModel")
+    logger.app_info("Successfully imported MedImageInsightModel")
 except ImportError as e:
     logger.error(f"Failed to import MedImageInsightModel: {str(e)}")
     # Liệt kê các file Python trong thư mục
@@ -43,7 +43,7 @@ except ImportError as e:
 
 # Model directory is relative to workspace root
 model_dir = os.path.join(WORKSPACE_ROOT, "runtime/models/MedImageInsights/2024.09.27")
-logger.info(f"Loading model from: {model_dir}")
+logger.app_info(f"Loading model from: {model_dir}")
 
 if not os.path.exists(model_dir):
     logger.error(f"Model directory not found at: {model_dir}")
@@ -57,7 +57,7 @@ try:
         language_model_name=settings.MEDIMAGEINSIGHTS_LANGUAGE_MODEL
     )
     classifier.load_model()
-    logger.info("Model loaded successfully")
+    logger.app_info("Model loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load model: {str(e)}")
     logger.error(traceback.format_exc())

@@ -1,0 +1,12 @@
+{
+  "get_domains": {
+    "status": "passed"
+  },
+  "get_domain_by_id": {
+    "status": "passed"
+  },
+  "create_update_domain": {
+    "status": "passed"
+  },
+  "timestamp": "1746952301.4776976"
+}

@@ -129,6 +129,11 @@ async def prepare_results_async(image_labels: List, query_labels: List, document
     label_documents = [get_document(label) for label in top_5_labels]
     return list(zip(top_5_labels, top_5_labels_score)), label_documents
 
+async def image_diagnosis_only_async(image_base64: str) -> Tuple[List, List]:
+    """Async version of image diagnosis with concurrent tasks"""
+    image_labels = await retrieve_similar_images_async(image_base64)
+    return await prepare_results_async(image_labels, [], [], [])
+
 async def image_diagnosis_async(image_base64: str) -> Tuple[List, List]:
     """Async version of image diagnosis with concurrent tasks"""
     # Get caption from image
