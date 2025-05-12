@@ -70,7 +70,7 @@ def create_admin_user(db, username, password, role_id) -> str:
     )
     
     user = crud.user.create(db, obj_in=user_data)
-    print(f"Đã tạo tài khoản admin {username} với ID: {user.user_id}")
+    print(f"Đã tạo tài khoản admin {username} với ID: {user.user_id} và hashpass: {hashed_password}")
     return user.user_id
 
 def initialize_image_usages(db):

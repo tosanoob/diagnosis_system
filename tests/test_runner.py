@@ -7,14 +7,21 @@ from pathlib import Path
 import argparse
 import subprocess
 
-def run_test_file(test_file_path):
+def run_test_file(test_file_path, api_base_url=None):
     """
     Chạy một file test cụ thể bằng cách import và thực thi
     """
     print(f"\n{'='*60}")
     print(f"Running tests in {test_file_path}...")
     print(f"{'='*60}")
-    
+
+    if api_base_url:
+        os.environ["API_BASE_URL"] = api_base_url
+        print(f"Using API endpoint: {api_base_url}")
+    else:
+        # Mặc định là localhost:8100/api
+        os.environ["API_BASE_URL"] = "http://localhost:8100/api"
+        print(f"Using default API endpoint: {os.environ['API_BASE_URL']}")
     # Chạy file test như một subprocess
     result = subprocess.run([sys.executable, test_file_path], capture_output=True, text=True)
     
@@ -117,7 +124,7 @@ if __name__ == "__main__":
                 print(f"Test file not found: {args.test_file}")
                 sys.exit(1)
         
-        success = run_test_file(test_file_path)
+        success = run_test_file(test_file_path, args.api_url)
         sys.exit(0 if success else 1)
     else:
         # Chạy tất cả tests

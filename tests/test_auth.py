@@ -7,6 +7,24 @@ from pathlib import Path
 # Cấu hình API endpoint
 BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8100/api")
 
+# Hash mật khẩu bằng SHA256 trước khi gửi đến API
+login_data = {
+    "username": "admin",
+    "password": "admin"
+}
+import hashlib
+
+# Tạo bản sao của login_data để không ảnh hưởng đến dữ liệu gốc
+login_data_with_hashed_password = login_data.copy()
+
+# Hash mật khẩu
+hashed_password = hashlib.sha256(login_data["password"].encode()).hexdigest()
+login_data_with_hashed_password["password"] = hashed_password
+
+# Sử dụng login_data_with_hashed_password thay vì login_data
+login_data = login_data_with_hashed_password
+print(hashed_password)
+
 def test_login_logout():
     """
     Test các endpoint đăng nhập và đăng xuất
@@ -17,11 +35,6 @@ def test_login_logout():
     Nếu tài khoản này không tồn tại, hãy tạo nó trước khi chạy test,
     hoặc thay đổi thông tin đăng nhập để phù hợp với tài khoản có sẵn
     """
-    # Đăng nhập với tài khoản admin
-    login_data = {
-        "username": "admin",
-        "password": "admin"
-    }
     
     response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
     
@@ -79,10 +92,6 @@ def test_domain_auth():
     Test xác thực cho các endpoint domain
     """
     # Đăng nhập để lấy token
-    login_data = {
-        "username": "admin",
-        "password": "admin"
-    }
     
     response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
     
@@ -167,10 +176,6 @@ def test_disease_auth():
     Test xác thực cho các endpoint disease
     """
     # Đăng nhập để lấy token
-    login_data = {
-        "username": "admin",
-        "password": "admin"
-    }
     
     response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
     
@@ -230,10 +235,6 @@ def test_clinic_article_auth():
     Test xác thực cho các endpoint clinic và article
     """
     # Đăng nhập để lấy token
-    login_data = {
-        "username": "admin",
-        "password": "admin"
-    }
     
     response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
     

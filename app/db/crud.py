@@ -446,13 +446,15 @@ class CRUDImageMap(CRUDBase[ImageMap, ImageMapCreate, ImageMapUpdate]):
         result = []
         for image_map in image_maps:
             image = db.query(Image).filter(Image.id == image_map.image_id).first()
+            # Chuyển đổi đối tượng SQLAlchemy sang dict để tránh lỗi serialization
+            image_dict = {k: v for k, v in image.__dict__.items() if k != "_sa_instance_state"} if image else None
             result.append({
                 "id": image_map.id,
                 "image_id": image_map.image_id,
                 "object_type": image_map.object_type,
                 "object_id": image_map.object_id,
                 "usage": image_map.usage,
-                "image": image
+                "image": image_dict
             })
         
         return result

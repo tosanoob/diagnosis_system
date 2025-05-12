@@ -16,13 +16,9 @@ from app.db.sqlite_service import get_db
 # Số giờ token có hiệu lực
 TOKEN_EXPIRATION_HOURS = 24
 
-def hash_password(password: str) -> str:
-    """Mã hóa mật khẩu"""
-    return hashlib.sha256(password.encode()).hexdigest()
-
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Xác minh mật khẩu"""
-    return hash_password(plain_password) == hashed_password
+    return plain_password == hashed_password
 
 async def register_user(username: str, password: str, role_id: Optional[str], db: Session) -> Dict[str, Any]:
     """Đăng ký người dùng mới"""
@@ -38,7 +34,7 @@ async def register_user(username: str, password: str, role_id: Optional[str], db
             raise HTTPException(status_code=404, detail="Vai trò không tồn tại")
     
     # Mã hóa mật khẩu
-    hashed_password = hash_password(password)
+    hashed_password = password
     
     # Tạo đối tượng người dùng mới
     user_data = UserInfoCreate(
@@ -156,11 +152,11 @@ async def verify_token(token: str, db: Session) -> Dict[str, Any]:
     if user.role_id:
         role = crud.role.get(db, id=user.role_id)
     
+    # Chỉ trả về thông tin cần thiết, không bao gồm role_id
     return {
         "user_id": user.user_id,
         "username": user.username,
-        "role": role.role if role else None,
-        "role_id": user.role_id
+        "role": role.role if role else None
     }
 
 async def change_password(user_id: str, old_password: str, new_password: str, db: Session) -> Dict[str, Any]:
@@ -175,7 +171,7 @@ async def change_password(user_id: str, old_password: str, new_password: str, db
         raise HTTPException(status_code=401, detail="Mật khẩu hiện tại không chính xác")
     
     # Mã hóa mật khẩu mới
-    hashed_password = hash_password(new_password)
+    hashed_password = new_password
     
     # Cập nhật mật khẩu
     user_data = UserInfoUpdate(hashpass=hashed_password)

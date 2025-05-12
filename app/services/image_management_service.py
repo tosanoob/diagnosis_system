@@ -189,8 +189,8 @@ async def save_image(
         image_map = crud.image_map.create(db, obj_in=image_map_data)
         
         return {
-            "image": image,
-            "image_map": image_map
+            "image": {k: v for k, v in image.__dict__.items() if k != "_sa_instance_state"},
+            "image_map": {k: v for k, v in image_map.__dict__.items() if k != "_sa_instance_state"}
         }
         
     except Exception as e:
@@ -313,8 +313,8 @@ async def get_image_by_usage(
             return None
         
         return {
-            "image_map": image_map,
-            "image": image
+            "image_map": {k: v for k, v in image_map.__dict__.items() if k != "_sa_instance_state"},
+            "image": {k: v for k, v in image.__dict__.items() if k != "_sa_instance_state"}
         }
     except Exception as e:
         logger.error(f"Error getting image by usage: {str(e)}")
@@ -391,8 +391,8 @@ async def update_image_usage(
         image = crud.image.get(db, image_map.image_id)
         
         return {
-            "image_map": image_map,
-            "image": image
+            "image_map": {k: v for k, v in image_map.__dict__.items() if k != "_sa_instance_state"},
+            "image": {k: v for k, v in image.__dict__.items() if k != "_sa_instance_state"}
         }
     except Exception as e:
         logger.error(f"Error updating image usage: {str(e)}")

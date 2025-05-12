@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import crud
 from app.models.database import ClinicCreate, ClinicUpdate
+from app.services.utils import filter_user_data
 
 async def get_all_clinics(
     skip: int = 0,
@@ -28,8 +29,8 @@ async def get_all_clinics(
         if clinic.created_by:
             creator = crud.user.get(db, clinic.created_by)
             if creator:
-                # Chuyển creator thành dict sạch
-                creator_dict = {k: v for k, v in creator.__dict__.items() if k != "_sa_instance_state"}
+                # Lọc thông tin nhạy cảm từ creator
+                creator_dict = filter_user_data({k: v for k, v in creator.__dict__.items() if k != "_sa_instance_state"})
                 clinic_dict["creator"] = creator_dict
         result.append(clinic_dict)
     
@@ -48,8 +49,8 @@ async def get_clinic_by_id(clinic_id: str, db: Session) -> Dict[str, Any]:
     if clinic.created_by:
         creator = crud.user.get(db, clinic.created_by)
         if creator:
-            # Chuyển creator thành dict sạch
-            creator_dict = {k: v for k, v in creator.__dict__.items() if k != "_sa_instance_state"}
+            # Lọc thông tin nhạy cảm từ creator
+            creator_dict = filter_user_data({k: v for k, v in creator.__dict__.items() if k != "_sa_instance_state"})
             result["creator"] = creator_dict
     
     # Lấy các hình ảnh liên quan

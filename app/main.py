@@ -132,9 +132,9 @@ if __name__ == "__main__":
     parser.add_argument("--enable-ngrok", action="store_true", help="Enable ngrok tunnel")
     
     args = parser.parse_args()
-    
+
     # Set ngrok enabled flag from command line argument
-    settings.NGROK_ENABLED = args.enable_ngrok
+    settings.NGROK_ENABLED = args.enable_ngrok or settings.NGROK_ENABLED
     settings.PORT = args.port
     settings.HOST = args.host
     
