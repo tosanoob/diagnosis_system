@@ -35,6 +35,15 @@ async def get_all_articles(
                 # Lọc thông tin nhạy cảm từ creator
                 creator_dict = filter_user_data({k: v for k, v in creator.__dict__.items() if k != "_sa_instance_state"})
                 article_dict["creator"] = creator_dict
+        
+        # Lấy các hình ảnh liên quan
+        try:
+            from app.services import image_management_service
+            images = await image_management_service.get_images_for_object("article", article.id, db)
+            article_dict["images"] = images
+        except Exception as e:
+            article_dict["images"] = []
+        
         result.append(article_dict)
     
     return result
@@ -126,5 +135,21 @@ async def delete_article(article_id: str, soft_delete: bool = True, deleted_by: 
 async def search_articles(search_term: str, skip: int = 0, limit: int = 100, db: Session = None) -> List[Dict[str, Any]]:
     """Tìm kiếm bài viết theo tiêu đề hoặc nội dung"""
     articles = crud.article.search_articles(db, search_term, skip=skip, limit=limit)
-    # Trả về danh sách các dict sạch không chứa _sa_instance_state
-    return [{k: v for k, v in article.__dict__.items() if k != "_sa_instance_state"} for article in articles] 
+    
+    # Trả về danh sách đã bao gồm thông tin hình ảnh
+    result = []
+    for article in articles:
+        # Loại bỏ _sa_instance_state
+        article_dict = {k: v for k, v in article.__dict__.items() if k != "_sa_instance_state"}
+        
+        # Lấy các hình ảnh liên quan
+        try:
+            from app.services import image_management_service
+            images = await image_management_service.get_images_for_object("article", article.id, db)
+            article_dict["images"] = images
+        except Exception as e:
+            article_dict["images"] = []
+        
+        result.append(article_dict)
+    
+    return result 

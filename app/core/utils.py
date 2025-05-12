@@ -1,6 +1,6 @@
 import json
 import os
-
+import numpy as np
 labels = json.load(open('labels.json', 'r', encoding='utf-8'))
 
 labels_to_folder = labels['disease_document_path']
@@ -286,3 +286,8 @@ def get_document(disease_name):
             json.load(open(os.path.join(document_path, d), 'r', encoding='utf-8'))['content']
         )
     return documents
+
+def softmax(scores):
+    exp_scores = [np.exp(score) for score in scores]
+    sum_exp_scores = sum(exp_scores)
+    return [exp_score / sum_exp_scores for exp_score in exp_scores]

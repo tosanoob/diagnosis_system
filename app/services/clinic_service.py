@@ -32,6 +32,15 @@ async def get_all_clinics(
                 # Lọc thông tin nhạy cảm từ creator
                 creator_dict = filter_user_data({k: v for k, v in creator.__dict__.items() if k != "_sa_instance_state"})
                 clinic_dict["creator"] = creator_dict
+        
+        # Lấy các hình ảnh liên quan
+        try:
+            from app.services import image_management_service
+            images = await image_management_service.get_images_for_object("clinic", clinic.id, db)
+            clinic_dict["images"] = images
+        except Exception as e:
+            clinic_dict["images"] = []
+        
         result.append(clinic_dict)
     
     return result
@@ -123,5 +132,21 @@ async def delete_clinic(clinic_id: str, soft_delete: bool = True, deleted_by: Op
 async def search_clinics(search_term: str, skip: int = 0, limit: int = 100, db: Session = None) -> List[Dict[str, Any]]:
     """Tìm kiếm phòng khám theo tên, mô tả hoặc địa chỉ"""
     clinics = crud.clinic.search_clinics(db, search_term, skip=skip, limit=limit)
-    # Trả về danh sách các dict sạch không chứa _sa_instance_state
-    return [{k: v for k, v in clinic.__dict__.items() if k != "_sa_instance_state"} for clinic in clinics] 
+    
+    # Trả về danh sách đã bao gồm thông tin hình ảnh
+    result = []
+    for clinic in clinics:
+        # Loại bỏ _sa_instance_state
+        clinic_dict = {k: v for k, v in clinic.__dict__.items() if k != "_sa_instance_state"}
+        
+        # Lấy các hình ảnh liên quan
+        try:
+            from app.services import image_management_service
+            images = await image_management_service.get_images_for_object("clinic", clinic.id, db)
+            clinic_dict["images"] = images
+        except Exception as e:
+            clinic_dict["images"] = []
+        
+        result.append(clinic_dict)
+    
+    return result 

@@ -37,6 +37,15 @@ async def get_all_diseases(
                 # Chuyển domain thành dict sạch
                 domain_dict = {k: v for k, v in domain.__dict__.items() if k != "_sa_instance_state"}
                 disease_dict["domain"] = domain_dict
+        
+        # Lấy các hình ảnh liên quan
+        try:
+            from app.services import image_management_service
+            images = await image_management_service.get_images_for_object("disease", disease.id, db)
+            disease_dict["images"] = images
+        except Exception as e:
+            disease_dict["images"] = []
+        
         result.append(disease_dict)
     
     return result
@@ -148,11 +157,43 @@ async def delete_disease(disease_id: str, soft_delete: bool = True, deleted_by: 
 async def get_disease_by_domain(domain_id: str, skip: int = 0, limit: int = 100, db: Session = None) -> List[Dict[str, Any]]:
     """Lấy danh sách các bệnh theo domain"""
     diseases = crud.disease.get_by_domain_id(db, domain_id, skip=skip, limit=limit)
-    # Trả về danh sách các dict sạch không chứa _sa_instance_state
-    return [{k: v for k, v in disease.__dict__.items() if k != "_sa_instance_state"} for disease in diseases]
+    
+    # Trả về danh sách đã bao gồm thông tin hình ảnh
+    result = []
+    for disease in diseases:
+        # Loại bỏ _sa_instance_state
+        disease_dict = {k: v for k, v in disease.__dict__.items() if k != "_sa_instance_state"}
+        
+        # Lấy các hình ảnh liên quan
+        try:
+            from app.services import image_management_service
+            images = await image_management_service.get_images_for_object("disease", disease.id, db)
+            disease_dict["images"] = images
+        except Exception as e:
+            disease_dict["images"] = []
+        
+        result.append(disease_dict)
+    
+    return result
 
 async def search_diseases(search_term: str, skip: int = 0, limit: int = 100, db: Session = None) -> List[Dict[str, Any]]:
     """Tìm kiếm bệnh theo tên hoặc mô tả"""
     diseases = crud.disease.search_diseases(db, search_term, skip=skip, limit=limit)
-    # Trả về danh sách các dict sạch không chứa _sa_instance_state
-    return [{k: v for k, v in disease.__dict__.items() if k != "_sa_instance_state"} for disease in diseases] 
+    
+    # Trả về danh sách đã bao gồm thông tin hình ảnh
+    result = []
+    for disease in diseases:
+        # Loại bỏ _sa_instance_state
+        disease_dict = {k: v for k, v in disease.__dict__.items() if k != "_sa_instance_state"}
+        
+        # Lấy các hình ảnh liên quan
+        try:
+            from app.services import image_management_service
+            images = await image_management_service.get_images_for_object("disease", disease.id, db)
+            disease_dict["images"] = images
+        except Exception as e:
+            disease_dict["images"] = []
+        
+        result.append(disease_dict)
+    
+    return result 

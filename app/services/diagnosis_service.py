@@ -13,7 +13,8 @@ from app.core.utils import (
     sort_image_results,
     sort_text_results,
     sort_document_results,
-    get_document
+    get_document,
+    softmax
 )
 from app.core.logging import logger
 
@@ -95,6 +96,7 @@ async def get_top_labels_async(labels: List[Tuple[str, float]], top_k: int = 5, 
             if item[0] == label:
                 top_k_labels_score.append(item[1])
                 break
+    top_k_labels_score = softmax(top_k_labels_score)
     return top_k_labels, top_k_labels_score
 
 async def prepare_results_async(image_labels: List, query_labels: List, document_labels: List, disease_labels: List) -> Tuple[List, List]:
