@@ -91,4 +91,17 @@ async def require_admin(user_data: Dict[str, Any] = Depends(get_current_user)) -
             status_code=403,
             detail="Không có quyền thực hiện hành động này. Yêu cầu quyền admin."
         )
-    return user_data 
+    return user_data
+
+async def get_admin_user(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Kiểm tra quyền admin của người dùng
+    """
+    if not current_user.get("role") or current_user["role"].lower() != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Bạn không có quyền thực hiện hành động này. Chỉ admin mới được phép."
+        )
+    return current_user 

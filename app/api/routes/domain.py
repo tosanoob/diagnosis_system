@@ -1,92 +1,122 @@
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
 from sqlalchemy.orm import Session
 
 from app.db.sqlite_service import get_db
-from app.db import crud
+from app.services import domain_service
 from app.models.database import Domain, DomainCreate, DomainUpdate
-from app.api.routes.auth import get_current_user
+from app.api.routes.auth import get_current_user, get_admin_user
 
 router = APIRouter()
 
-@router.get("", response_model=List[Domain])
-def get_domains(
+@router.get("", response_model=List[Dict[str, Any]])
+async def get_domains(
     skip: int = 0, 
     limit: int = 100,
-    db: Session = Depends(get_db)
+    include_deleted: bool = False,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Lấy danh sách các lĩnh vực y tế
     """
-    # Chỉ lấy các domain chưa bị xóa (soft delete)
-    domains = db.query(crud.domain.model).filter(
-        crud.domain.model.deleted_at.is_(None)
-    ).offset(skip).limit(limit).all()
+    # Nếu không phải admin và muốn xem cả những record đã xóa
+    if include_deleted and current_user.get("role", "").lower() != "admin":
+        include_deleted = False
+        
+    return await domain_service.get_all_domains(
+        skip=skip,
+        limit=limit,
+        include_deleted=include_deleted,
+        db=db
+    )
 
-    return domains
-
-@router.post("", response_model=Domain)
-def create_domain(
-    domain: DomainCreate,
+@router.post("", response_model=Dict[str, Any])
+async def create_domain(
+    domain: DomainCreate = Body(...),
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_admin_user)  # Chỉ admin mới được tạo domain
 ):
     """
     Tạo lĩnh vực y tế mới
     """
-    # Lấy user_id từ token để gán cho created_by
-    domain.created_by = current_user["user_id"]
-    
-    return crud.domain.create(db, obj_in=domain)
+    return await domain_service.create_domain(
+        domain_data=domain,
+        db=db,
+        created_by=current_user["user_id"]
+    )
 
-@router.get("/{domain_id}", response_model=Domain)
-def get_domain(
+@router.get("/{domain_id}", response_model=Dict[str, Any])
+async def get_domain(
     domain_id: str = Path(..., description="ID của lĩnh vực y tế"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Lấy thông tin chi tiết của một lĩnh vực y tế
     """
-    db_domain = crud.domain.get(db, id=domain_id)
-    if db_domain is None or db_domain.deleted_at is not None:
+    domain = await domain_service.get_domain_by_id(domain_id=domain_id, db=db)
+    
+    # Nếu domain đã bị xóa, chỉ admin mới được xem
+    if domain.get("deleted_at") and current_user.get("role", "").lower() != "admin":
         raise HTTPException(status_code=404, detail="Không tìm thấy lĩnh vực y tế")
-    return db_domain
+        
+    return domain
 
-@router.put("/{domain_id}", response_model=Domain)
-def update_domain(
+@router.put("/{domain_id}", response_model=Dict[str, Any])
+async def update_domain(
     domain_id: str = Path(..., description="ID của lĩnh vực y tế"),
-    domain: DomainUpdate = None,
+    domain: DomainUpdate = Body(...),
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_admin_user)  # Chỉ admin mới được cập nhật domain
 ):
     """
     Cập nhật thông tin lĩnh vực y tế
     """
-    db_domain = crud.domain.get(db, id=domain_id)
-    if db_domain is None or db_domain.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Không tìm thấy lĩnh vực y tế")
-    
-    # Thêm thông tin người cập nhật từ token
-    if domain:
-        domain.updated_by = current_user["user_id"]
-        
-    return crud.domain.update(db, db_obj=db_domain, obj_in=domain)
+    return await domain_service.update_domain(
+        domain_id=domain_id,
+        domain_data=domain,
+        db=db,
+        updated_by=current_user["user_id"]
+    )
 
-@router.delete("/{domain_id}", response_model=Domain)
-def delete_domain(
+@router.delete("/{domain_id}", response_model=Dict[str, Any])
+async def delete_domain(
     domain_id: str = Path(..., description="ID của lĩnh vực y tế"),
-    db: Session = Depends(get_db),
     soft_delete: bool = True,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_admin_user)  # Chỉ admin mới được xóa domain
 ):
     """
     Xóa lĩnh vực y tế (mặc định là soft delete)
     """
-    db_domain = crud.domain.get(db, id=domain_id)
-    if db_domain is None or db_domain.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Không tìm thấy lĩnh vực y tế")
-    
-    if soft_delete:
-        return crud.domain.soft_delete(db, id=domain_id, deleted_by=current_user["user_id"])
-    else:
-        return crud.domain.remove(db, id=domain_id)
+    return await domain_service.delete_domain(
+        domain_id=domain_id,
+        soft_delete=soft_delete,
+        deleted_by=current_user["user_id"],
+        db=db
+    )
+
+@router.get("/search/{search_term}", response_model=List[Dict[str, Any]])
+async def search_domains(
+    search_term: str = Path(..., description="Từ khóa tìm kiếm"),
+    skip: int = 0,
+    limit: int = 100,
+    include_deleted: bool = False,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Tìm kiếm lĩnh vực y tế theo tên hoặc mô tả
+    """
+    # Nếu không phải admin và muốn xem cả những record đã xóa
+    if include_deleted and current_user.get("role", "").lower() != "admin":
+        include_deleted = False
+        
+    return await domain_service.search_domains(
+        search_term=search_term,
+        skip=skip,
+        limit=limit,
+        include_deleted=include_deleted,
+        db=db
+    )

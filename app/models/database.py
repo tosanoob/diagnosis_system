@@ -17,7 +17,7 @@ class BaseModelWithAudit(BaseModelWithTimestamps):
 # Disease models
 class DiseaseBase(BaseModel):
     label: str
-    domain_id: Optional[str] = None
+    domain_id: str
     description: Optional[str] = None
     included_in_diagnosis: bool = True
     article_id: Optional[str] = None
@@ -78,6 +78,9 @@ class DiseaseDomainCrossmap(DiseaseDomainCrossmapBase):
     
     class Config:
         from_attributes = True
+
+class DiseaseDomainCrossmapBatchCreate(BaseModel):
+    crossmaps: List[DiseaseDomainCrossmapCreate]
 
 # DiagnosisLog models
 class DiagnosisLogBase(BaseModel):

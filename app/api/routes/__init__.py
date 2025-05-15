@@ -7,6 +7,7 @@ from app.api.routes.images import router as images_router
 from app.api.routes.disease import router as disease_router
 from app.api.routes.domain import router as domain_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.crossmap import router as crossmap_router
 
 router = APIRouter()
 
@@ -18,3 +19,4 @@ router.include_router(article_router, prefix="/article", tags=["Article"])
 router.include_router(images_router, prefix="/images", tags=["Images"])
 router.include_router(disease_router, prefix="/diseases", tags=["Diseases"])
 router.include_router(domain_router, prefix="/domains", tags=["Domains"])
+router.include_router(crossmap_router, prefix="/crossmaps", tags=["Disease Domain Crossmaps"])
