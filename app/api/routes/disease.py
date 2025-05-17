@@ -5,12 +5,13 @@ from sqlalchemy.orm import Session
 from app.db.sqlite_service import get_db
 from app.services import disease_service
 from app.models.database import Disease, DiseaseCreate, DiseaseUpdate
+from app.models.response import PaginatedResponse
 from app.api.routes.auth import get_current_user, get_admin_user, get_optional_user
 from app.db import crud
 
 router = APIRouter()
 
-@router.get("/", response_model=List[Dict[str, Any]])
+@router.get("/", response_model=Dict[str, Any])
 async def get_diseases(
     skip: int = 0, 
     limit: int = 100,
@@ -22,14 +23,14 @@ async def get_diseases(
     current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
-    Lấy danh sách các bệnh
+    Lấy danh sách các bệnh với phân trang
     """
     # Nếu không có token hoặc không phải admin và muốn xem cả những record đã xóa
     if not current_user or (include_deleted and current_user.get("role", "").lower() != "admin"):
         include_deleted = False
         active_only = True
     
-    return await disease_service.get_all_diseases(
+    items, total = await disease_service.get_all_diseases(
         skip=skip,
         limit=limit,
         active_only=active_only,
@@ -38,6 +39,8 @@ async def get_diseases(
         include_deleted=include_deleted,
         db=db
     )
+    
+    return PaginatedResponse.create(items, total, skip, limit)
 
 @router.post("/", response_model=Dict[str, Any])
 async def create_disease(
@@ -105,7 +108,7 @@ async def delete_disease(
         db=db
     )
 
-@router.get("/domain/{domain_id}", response_model=List[Dict[str, Any]])
+@router.get("/domain/{domain_id}", response_model=Dict[str, Any])
 async def get_diseases_by_domain(
     domain_id: str = Path(..., description="ID của domain"),
     skip: int = 0,
@@ -115,21 +118,23 @@ async def get_diseases_by_domain(
     current_user: Optional[Dict[str, Any]] = Depends(lambda: get_current_user(required=False))
 ):
     """
-    Lấy danh sách các bệnh theo domain
+    Lấy danh sách các bệnh theo domain với phân trang
     """
     # Nếu không phải admin và muốn xem cả những record đã xóa
     if include_deleted and current_user.get("role", "").lower() != "admin":
         include_deleted = False
     
-    return await disease_service.get_disease_by_domain(
+    items, total = await disease_service.get_disease_by_domain(
         domain_id=domain_id,
         skip=skip,
         limit=limit,
         include_deleted=include_deleted,
         db=db
     )
+    
+    return PaginatedResponse.create(items, total, skip, limit)
 
-@router.get("/search/{search_term}", response_model=List[Dict[str, Any]])
+@router.get("/search/{search_term}", response_model=Dict[str, Any])
 async def search_diseases(
     search_term: str = Path(..., description="Từ khóa tìm kiếm"),
     skip: int = 0,
@@ -139,21 +144,23 @@ async def search_diseases(
     current_user: Optional[Dict[str, Any]] = Depends(lambda: get_current_user(required=False))
 ):
     """
-    Tìm kiếm bệnh theo tên hoặc mô tả
+    Tìm kiếm bệnh theo tên hoặc mô tả với phân trang
     """
     # Nếu không phải admin và muốn xem cả những record đã xóa
     if include_deleted and current_user.get("role", "").lower() != "admin":
         include_deleted = False
     
-    return await disease_service.search_diseases(
+    items, total = await disease_service.search_diseases(
         search_term=search_term,
         skip=skip,
         limit=limit,
         include_deleted=include_deleted,
         db=db
     )
+    
+    return PaginatedResponse.create(items, total, skip, limit)
 
-@router.get("/domain/{domain_id}/simple", response_model=List[Dict[str, Any]])
+@router.get("/domain/{domain_id}/simple", response_model=Dict[str, Any])
 async def get_diseases_by_domain_simple(
     domain_id: str = Path(..., description="ID của domain"),
     skip: int = 0,
@@ -163,7 +170,7 @@ async def get_diseases_by_domain_simple(
     current_user: Optional[Dict[str, Any]] = Depends(lambda: get_current_user(required=False))
 ):
     """
-    Lấy danh sách tối giản các bệnh thuộc một domain (chỉ bao gồm id, label, domain_id)
+    Lấy danh sách tối giản các bệnh thuộc một domain với phân trang
     """
     # Nếu không phải admin và muốn xem cả những record đã xóa
     if include_deleted and current_user.get("role", "").lower() != "admin":
@@ -175,15 +182,19 @@ async def get_diseases_by_domain_simple(
     
     if not include_deleted:
         query = query.filter(crud.disease.model.deleted_at.is_(None))
-        
+    
+    # Đếm tổng số record
+    total = query.count()
+    
+    # Lấy danh sách với offset và limit
     diseases = query.offset(skip).limit(limit).all()
     
-    result = []
+    items = []
     for disease in diseases:
-        result.append({
+        items.append({
             "id": disease.id,
             "label": disease.label,
             "domain_id": disease.domain_id
         })
     
-    return result 
+    return PaginatedResponse.create(items, total, skip, limit) 

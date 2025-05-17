@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 from app.db.sqlite_service import get_db
 from app.services import clinic_service
 from app.models.database import Clinic, ClinicCreate, ClinicUpdate
+from app.models.response import PaginatedResponse
 from app.api.routes.auth import get_current_user, get_optional_user
 
 router = APIRouter()
 
-@router.get("/", response_model=List[Dict[str, Any]])
+@router.get("/", response_model=Dict[str, Any])
 async def get_clinics(
     skip: int = 0, 
     limit: int = 100,
@@ -19,23 +20,25 @@ async def get_clinics(
     current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
-    Lấy danh sách các phòng khám
+    Lấy danh sách các phòng khám với phân trang
     """
     # Nếu không có token hoặc không phải admin và muốn xem cả những record đã xóa
     if not current_user or (include_deleted and current_user.get("role", "").lower() != "admin"):
         include_deleted = False
 
-    clinics = await clinic_service.get_all_clinics(
+    items, total = await clinic_service.get_all_clinics(
         skip=skip,
         limit=limit,
         search=search,
         include_deleted=include_deleted,
         db=db
     )
-    # Filter out soft-deleted clinics if not admin
+    
+    # Filter out soft-deleted clinics if not include_deleted
     if not include_deleted:
-        return [clinic for clinic in clinics if not clinic.get("deleted_at")]
-    return clinics
+        items = [clinic for clinic in items if not clinic.get("deleted_at")]
+    
+    return PaginatedResponse.create(items, total, skip, limit)
 
 @router.post("/", response_model=Dict[str, Any])
 async def create_clinic(
@@ -101,7 +104,7 @@ async def delete_clinic(
         db=db
     )
 
-@router.get("/search/{search_term}", response_model=List[Dict[str, Any]])
+@router.get("/search/{search_term}", response_model=Dict[str, Any])
 async def search_clinics(
     search_term: str = Path(..., description="Từ khóa tìm kiếm"),
     skip: int = 0,
@@ -109,13 +112,16 @@ async def search_clinics(
     db: Session = Depends(get_db)
 ):
     """
-    Tìm kiếm phòng khám theo tên, mô tả hoặc địa chỉ
+    Tìm kiếm phòng khám theo tên, mô tả hoặc địa chỉ với phân trang
     """
-    clinics = await clinic_service.search_clinics(
+    items, total = await clinic_service.search_clinics(
         search_term=search_term,
         skip=skip,
         limit=limit,
         db=db
     )
+    
     # Filter out soft-deleted clinics
-    return [clinic for clinic in clinics if not clinic.get("deleted_at")] 
+    items = [clinic for clinic in items if not clinic.get("deleted_at")]
+    
+    return PaginatedResponse.create(items, total, skip, limit) 

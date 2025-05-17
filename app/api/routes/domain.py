@@ -5,31 +5,36 @@ from sqlalchemy.orm import Session
 from app.db.sqlite_service import get_db
 from app.services import domain_service
 from app.models.database import Domain, DomainCreate, DomainUpdate
+from app.models.response import PaginatedResponse
 from app.api.routes.auth import get_current_user, get_admin_user, get_optional_user
 
 router = APIRouter()
 
-@router.get("", response_model=List[Dict[str, Any]])
+@router.get("", response_model=Dict[str, Any])
 async def get_domains(
-    skip: int = 0, 
+    skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = None, 
     include_deleted: bool = False,
     db: Session = Depends(get_db),
     current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
-    Lấy danh sách các lĩnh vực y tế
+    Lấy danh sách các domain với phân trang
     """
     # Nếu không có token hoặc không phải admin và muốn xem cả những record đã xóa
-    if not current_user or (include_deleted and current_user.get("role", "").lower() != "admin"):
+    if include_deleted and (not current_user or current_user.get("role", "").lower() != "admin"):
         include_deleted = False
-        
-    return await domain_service.get_all_domains(
+    
+    items, total = await domain_service.get_all_domains(
         skip=skip,
         limit=limit,
+        search=search,
         include_deleted=include_deleted,
         db=db
     )
+    
+    return PaginatedResponse.create(items, total, skip, limit)
 
 @router.post("", response_model=Dict[str, Any])
 async def create_domain(
@@ -97,7 +102,7 @@ async def delete_domain(
         db=db
     )
 
-@router.get("/search/{search_term}", response_model=List[Dict[str, Any]])
+@router.get("/search/{search_term}", response_model=Dict[str, Any])
 async def search_domains(
     search_term: str = Path(..., description="Từ khóa tìm kiếm"),
     skip: int = 0,
@@ -107,16 +112,18 @@ async def search_domains(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Tìm kiếm lĩnh vực y tế theo tên hoặc mô tả
+    Tìm kiếm lĩnh vực y tế theo tên hoặc mô tả với phân trang
     """
     # Nếu không phải admin và muốn xem cả những record đã xóa
     if include_deleted and current_user.get("role", "").lower() != "admin":
         include_deleted = False
-        
-    return await domain_service.search_domains(
+    
+    items, total = await domain_service.search_domains(
         search_term=search_term,
         skip=skip,
         limit=limit,
         include_deleted=include_deleted,
         db=db
     )
+    
+    return PaginatedResponse.create(items, total, skip, limit)

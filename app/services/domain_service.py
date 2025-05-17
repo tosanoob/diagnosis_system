@@ -1,9 +1,10 @@
 """
 Service xử lý logic cho domain
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, func
 
 from app.db import crud
 from app.models.database import DomainCreate, DomainUpdate
@@ -11,24 +12,79 @@ from app.models.database import DomainCreate, DomainUpdate
 async def get_all_domains(
     skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = None,
     include_deleted: bool = False,
     db: Session = None
-) -> List[Dict[str, Any]]:
-    """Lấy danh sách các domain"""
-    query = db.query(crud.domain.model)
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Lấy danh sách các domain
     
-    if not include_deleted:
-        query = query.filter(crud.domain.model.deleted_at.is_(None))
-        
-    domains = query.offset(skip).limit(limit).all()
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách domain và tổng số records
+    """
+    if search:
+        domains = get_domains_by_search(search, skip, limit, include_deleted, db)
+        total = count_domains_by_search(search, include_deleted, db)
+    else:
+        domains = get_all_domains_base(skip, limit, include_deleted, db)
+        total = count_all_domains(include_deleted, db)
     
+    # Chuyển domain thành dicts phù hợp với JSON
     result = []
     for domain in domains:
         # Loại bỏ _sa_instance_state
         domain_dict = {k: v for k, v in domain.__dict__.items() if k != "_sa_instance_state"}
         result.append(domain_dict)
     
-    return result
+    return result, total
+
+def get_domains_by_search(search_term: str, skip: int, limit: int, include_deleted: bool, db: Session):
+    """Helper function để tìm kiếm domain"""
+    search_pattern = f"%{search_term}%"
+    query = db.query(crud.domain.model).filter(
+        or_(
+            crud.domain.model.domain.ilike(search_pattern),
+            crud.domain.model.description.ilike(search_pattern)
+        )
+    )
+    
+    if not include_deleted:
+        query = query.filter(crud.domain.model.deleted_at.is_(None))
+        
+    return query.offset(skip).limit(limit).all()
+
+def get_all_domains_base(skip: int, limit: int, include_deleted: bool, db: Session):
+    """Helper function để lấy tất cả domain"""
+    query = db.query(crud.domain.model)
+    
+    if not include_deleted:
+        query = query.filter(crud.domain.model.deleted_at.is_(None))
+        
+    return query.offset(skip).limit(limit).all()
+
+def count_domains_by_search(search_term: str, include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm domain theo kết quả tìm kiếm"""
+    search_pattern = f"%{search_term}%"
+    query = db.query(func.count(crud.domain.model.id)).filter(
+        or_(
+            crud.domain.model.domain.ilike(search_pattern),
+            crud.domain.model.description.ilike(search_pattern)
+        )
+    )
+    
+    if not include_deleted:
+        query = query.filter(crud.domain.model.deleted_at.is_(None))
+        
+    return query.scalar()
+
+def count_all_domains(include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm tất cả domain"""
+    query = db.query(func.count(crud.domain.model.id))
+    
+    if not include_deleted:
+        query = query.filter(crud.domain.model.deleted_at.is_(None))
+        
+    return query.scalar()
 
 async def get_domain_by_id(domain_id: str, db: Session) -> Dict[str, Any]:
     """Lấy thông tin chi tiết của một domain"""
@@ -150,17 +206,15 @@ async def delete_domain(domain_id: str, soft_delete: bool = True, deleted_by: Op
     result["diseases_deleted"] = len(diseases)
     return result
 
-async def search_domains(search_term: str, skip: int = 0, limit: int = 100, include_deleted: bool = False, db: Session = None) -> List[Dict[str, Any]]:
-    """Tìm kiếm domain theo tên hoặc mô tả"""
-    search_pattern = f"%{search_term}%"
-    query = db.query(crud.domain.model).filter(
-        crud.domain.model.domain.ilike(search_pattern) | crud.domain.model.description.ilike(search_pattern)
-    )
+async def search_domains(search_term: str, skip: int = 0, limit: int = 100, include_deleted: bool = False, db: Session = None) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Tìm kiếm domain theo tên hoặc mô tả
     
-    if not include_deleted:
-        query = query.filter(crud.domain.model.deleted_at.is_(None))
-        
-    domains = query.offset(skip).limit(limit).all()
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách domain và tổng số records
+    """
+    domains = get_domains_by_search(search_term, skip, limit, include_deleted, db)
+    total = count_domains_by_search(search_term, include_deleted, db)
     
     result = []
     for domain in domains:
@@ -176,4 +230,4 @@ async def search_domains(search_term: str, skip: int = 0, limit: int = 100, incl
         domain_dict["disease_count"] = disease_count
         result.append(domain_dict)
     
-    return result 
+    return result, total 

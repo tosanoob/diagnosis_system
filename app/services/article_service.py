@@ -1,9 +1,10 @@
 """
 Service xử lý logic cho bài viết
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, func
 
 from app.db import crud
 from app.models.database import ArticleCreate, ArticleUpdate
@@ -16,17 +17,25 @@ async def get_all_articles(
     author_id: Optional[str] = None,
     include_deleted: bool = False,
     db: Session = None
-) -> List[Dict[str, Any]]:
-    """Lấy danh sách các bài viết"""
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Lấy danh sách các bài viết
+    
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách bài viết và tổng số records
+    """
     if search:
         articles = crud.article.search_articles(db, search, skip=skip, limit=limit)
+        total = count_articles_by_search(search, db)
     elif author_id:
         articles = crud.article.get_by_author(db, author_id, skip=skip, limit=limit)
+        total = count_articles_by_author(author_id, db)
     else:
         query = db.query(crud.article.model)
         if not include_deleted:
             query = query.filter(crud.article.model.deleted_at.is_(None))
         articles = query.offset(skip).limit(limit).all()
+        total = count_all_articles(include_deleted, db)
     
     # Lấy thông tin người tạo cho mỗi bài viết
     result = []
@@ -50,7 +59,36 @@ async def get_all_articles(
         
         result.append(article_dict)
     
-    return result
+    return result, total
+
+# Helper functions để đếm tổng số records
+
+def count_articles_by_search(search_term: str, db: Session) -> int:
+    """Helper function để đếm số bài viết theo kết quả tìm kiếm"""
+    search_pattern = f"%{search_term}%"
+    return db.query(func.count(crud.article.model.id)).filter(
+        or_(
+            crud.article.model.title.ilike(search_pattern),
+            crud.article.model.content.ilike(search_pattern)
+        ),
+        crud.article.model.deleted_at.is_(None)
+    ).scalar()
+
+def count_articles_by_author(author_id: str, db: Session) -> int:
+    """Helper function để đếm số bài viết theo tác giả"""
+    return db.query(func.count(crud.article.model.id)).filter(
+        crud.article.model.created_by == author_id,
+        crud.article.model.deleted_at.is_(None)
+    ).scalar()
+
+def count_all_articles(include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm tất cả bài viết"""
+    query = db.query(func.count(crud.article.model.id))
+    
+    if not include_deleted:
+        query = query.filter(crud.article.model.deleted_at.is_(None))
+        
+    return query.scalar()
 
 async def get_article_by_id(article_id: str, db: Session) -> Dict[str, Any]:
     """Lấy thông tin chi tiết của một bài viết"""
@@ -136,9 +174,15 @@ async def delete_article(article_id: str, soft_delete: bool = True, deleted_by: 
     
     return {"success": True, "article_id": article_id}
 
-async def search_articles(search_term: str, skip: int = 0, limit: int = 100, db: Session = None) -> List[Dict[str, Any]]:
-    """Tìm kiếm bài viết theo tiêu đề hoặc nội dung"""
+async def search_articles(search_term: str, skip: int = 0, limit: int = 100, db: Session = None) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Tìm kiếm bài viết theo tiêu đề hoặc nội dung
+    
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách bài viết và tổng số records
+    """
     articles = crud.article.search_articles(db, search_term, skip=skip, limit=limit)
+    total = count_articles_by_search(search_term, db)
     
     # Trả về danh sách đã bao gồm thông tin hình ảnh
     result = []
@@ -156,4 +200,4 @@ async def search_articles(search_term: str, skip: int = 0, limit: int = 100, db:
         
         result.append(article_dict)
     
-    return result 
+    return result, total 

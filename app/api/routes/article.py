@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 from app.db.sqlite_service import get_db
 from app.services import article_service
 from app.models.database import Article, ArticleCreate, ArticleUpdate
+from app.models.response import PaginatedResponse
 from app.api.routes.auth import get_current_user, get_optional_user
 
 router = APIRouter()
 
-@router.get("/", response_model=List[Dict[str, Any]])
+@router.get("/", response_model=Dict[str, Any])
 async def get_articles(
     skip: int = 0, 
     limit: int = 100,
@@ -20,13 +21,13 @@ async def get_articles(
     current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
-    Lấy danh sách các bài viết
+    Lấy danh sách các bài viết với phân trang
     """
     # Nếu không có token hoặc không phải admin và muốn xem cả những record đã xóa
     if not current_user or (include_deleted and current_user.get("role", "").lower() != "admin"):
         include_deleted = False
 
-    articles = await article_service.get_all_articles(
+    items, total = await article_service.get_all_articles(
         skip=skip,
         limit=limit,
         search=search,
@@ -34,10 +35,12 @@ async def get_articles(
         include_deleted=include_deleted,
         db=db
     )
-    # Filter out soft-deleted articles if not admin
+    
+    # Filter out soft-deleted articles if not include_deleted
     if not include_deleted:
-        return [article for article in articles if not article.get("deleted_at")]
-    return articles
+        items = [article for article in items if not article.get("deleted_at")]
+    
+    return PaginatedResponse.create(items, total, skip, limit)
 
 @router.post("/", response_model=Dict[str, Any])
 async def create_article(
@@ -101,7 +104,7 @@ async def delete_article(
         db=db
     )
 
-@router.get("/search/{search_term}", response_model=List[Dict[str, Any]])
+@router.get("/search/{search_term}", response_model=Dict[str, Any])
 async def search_articles(
     search_term: str = Path(..., description="Từ khóa tìm kiếm"),
     skip: int = 0,
@@ -109,13 +112,16 @@ async def search_articles(
     db: Session = Depends(get_db)
 ):
     """
-    Tìm kiếm bài viết theo tiêu đề hoặc nội dung
+    Tìm kiếm bài viết theo tiêu đề hoặc nội dung với phân trang
     """
-    articles = await article_service.search_articles(
+    items, total = await article_service.search_articles(
         search_term=search_term,
         skip=skip,
         limit=limit,
         db=db
     )
+    
     # Filter out soft-deleted articles
-    return [article for article in articles if not article.get("deleted_at")] 
+    items = [article for article in items if not article.get("deleted_at")]
+    
+    return PaginatedResponse.create(items, total, skip, limit) 

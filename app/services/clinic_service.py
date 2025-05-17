@@ -1,9 +1,10 @@
 """
 Service xử lý logic cho phòng khám
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, func
 
 from app.db import crud
 from app.models.database import ClinicCreate, ClinicUpdate
@@ -15,27 +16,25 @@ async def get_all_clinics(
     search: Optional[str] = None,
     include_deleted: bool = False,
     db: Session = None
-) -> List[Dict[str, Any]]:
-    """Lấy danh sách các phòng khám"""
-    if search:
-        clinics = crud.clinic.search_clinics(db, search, skip=skip, limit=limit)
-    else:
-        query = db.query(crud.clinic.model)
-        if not include_deleted:
-            query = query.filter(crud.clinic.model.deleted_at.is_(None))
-        clinics = query.offset(skip).limit(limit).all()
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Lấy danh sách các phòng khám
     
-    # Lấy thông tin người tạo cho mỗi phòng khám
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách phòng khám và tổng số records
+    """
+    if search:
+        clinics = get_clinics_by_search(search, skip, limit, include_deleted, db)
+        total = count_clinics_by_search(search, include_deleted, db)
+    else:
+        clinics = get_all_clinics_base(skip, limit, include_deleted, db)
+        total = count_all_clinics(include_deleted, db)
+    
+    # Trả về danh sách với thông tin phù hợp
     result = []
     for clinic in clinics:
         # Loại bỏ _sa_instance_state
         clinic_dict = {k: v for k, v in clinic.__dict__.items() if k != "_sa_instance_state"}
-        if clinic.created_by:
-            creator = crud.user.get(db, clinic.created_by)
-            if creator:
-                # Lọc thông tin nhạy cảm từ creator
-                creator_dict = filter_user_data({k: v for k, v in creator.__dict__.items() if k != "_sa_instance_state"})
-                clinic_dict["creator"] = creator_dict
         
         # Lấy các hình ảnh liên quan
         try:
@@ -47,7 +46,57 @@ async def get_all_clinics(
         
         result.append(clinic_dict)
     
-    return result
+    return result, total
+
+def get_clinics_by_search(search_term: str, skip: int, limit: int, include_deleted: bool, db: Session):
+    """Helper function để tìm kiếm phòng khám"""
+    search_pattern = f"%{search_term}%"
+    query = db.query(crud.clinic.model).filter(
+        or_(
+            crud.clinic.model.name.ilike(search_pattern),
+            crud.clinic.model.description.ilike(search_pattern),
+            crud.clinic.model.location.ilike(search_pattern)
+        )
+    )
+    
+    if not include_deleted:
+        query = query.filter(crud.clinic.model.deleted_at.is_(None))
+        
+    return query.offset(skip).limit(limit).all()
+
+def get_all_clinics_base(skip: int, limit: int, include_deleted: bool, db: Session):
+    """Helper function để lấy tất cả phòng khám"""
+    query = db.query(crud.clinic.model)
+    
+    if not include_deleted:
+        query = query.filter(crud.clinic.model.deleted_at.is_(None))
+        
+    return query.offset(skip).limit(limit).all()
+
+def count_clinics_by_search(search_term: str, include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm số phòng khám theo kết quả tìm kiếm"""
+    search_pattern = f"%{search_term}%"
+    query = db.query(func.count(crud.clinic.model.id)).filter(
+        or_(
+            crud.clinic.model.name.ilike(search_pattern),
+            crud.clinic.model.description.ilike(search_pattern),
+            crud.clinic.model.location.ilike(search_pattern)
+        )
+    )
+    
+    if not include_deleted:
+        query = query.filter(crud.clinic.model.deleted_at.is_(None))
+        
+    return query.scalar()
+
+def count_all_clinics(include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm tất cả phòng khám"""
+    query = db.query(func.count(crud.clinic.model.id))
+    
+    if not include_deleted:
+        query = query.filter(crud.clinic.model.deleted_at.is_(None))
+        
+    return query.scalar()
 
 async def get_clinic_by_id(clinic_id: str, db: Session) -> Dict[str, Any]:
     """Lấy thông tin chi tiết của một phòng khám"""
@@ -140,9 +189,15 @@ async def delete_clinic(clinic_id: str, soft_delete: bool = True, deleted_by: Op
     
     return {"success": True, "clinic_id": clinic_id}
 
-async def search_clinics(search_term: str, skip: int = 0, limit: int = 100, db: Session = None) -> List[Dict[str, Any]]:
-    """Tìm kiếm phòng khám theo tên, mô tả hoặc địa chỉ"""
-    clinics = crud.clinic.search_clinics(db, search_term, skip=skip, limit=limit)
+async def search_clinics(search_term: str, skip: int = 0, limit: int = 100, db: Session = None) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Tìm kiếm phòng khám theo tên, mô tả hoặc địa chỉ
+    
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách phòng khám và tổng số records
+    """
+    clinics = get_clinics_by_search(search_term, skip, limit, include_deleted=False, db=db)
+    total = count_clinics_by_search(search_term, include_deleted=False, db=db)
     
     # Trả về danh sách đã bao gồm thông tin hình ảnh
     result = []
@@ -160,4 +215,4 @@ async def search_clinics(search_term: str, skip: int = 0, limit: int = 100, db: 
         
         result.append(clinic_dict)
     
-    return result 
+    return result, total 

@@ -1,10 +1,10 @@
 """
 Service xử lý logic cho bệnh
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 
 from app.db import crud
 from app.models.database import DiseaseCreate, DiseaseUpdate
@@ -17,16 +17,25 @@ async def get_all_diseases(
     search: Optional[str] = None,
     include_deleted: bool = False,
     db: Session = None
-) -> List[Dict[str, Any]]:
-    """Lấy danh sách các bệnh"""
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Lấy danh sách các bệnh
+    
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách bệnh và tổng số records
+    """
     if search:
         diseases = get_diseases_by_search(search, skip, limit, include_deleted, db)
+        total = count_diseases_by_search(search, include_deleted, db)
     elif domain_id:
         diseases = get_diseases_by_domain(domain_id, skip, limit, include_deleted, db)
+        total = count_diseases_by_domain(domain_id, include_deleted, db)
     elif active_only:
         diseases = get_active_diseases(skip, limit, include_deleted, db)
+        total = count_active_diseases(include_deleted, db)
     else:
         diseases = get_all_diseases_base(skip, limit, include_deleted, db)
+        total = count_all_diseases(include_deleted, db)
     
     # Lấy thông tin domain cho mỗi bệnh
     result = []
@@ -50,7 +59,55 @@ async def get_all_diseases(
         
         result.append(disease_dict)
     
-    return result
+    return result, total
+
+# Helper functions để đếm tổng số records
+
+def count_diseases_by_search(search_term: str, include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm số bệnh theo kết quả tìm kiếm"""
+    search_pattern = f"%{search_term}%"
+    query = db.query(func.count(crud.disease.model.id)).filter(
+        or_(
+            crud.disease.model.label.ilike(search_pattern),
+            crud.disease.model.description.ilike(search_pattern)
+        )
+    )
+    
+    if not include_deleted:
+        query = query.filter(crud.disease.model.deleted_at.is_(None))
+        
+    return query.scalar()
+
+def count_diseases_by_domain(domain_id: str, include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm số bệnh theo domain"""
+    query = db.query(func.count(crud.disease.model.id)).filter(
+        crud.disease.model.domain_id == domain_id
+    )
+    
+    if not include_deleted:
+        query = query.filter(crud.disease.model.deleted_at.is_(None))
+        
+    return query.scalar()
+
+def count_active_diseases(include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm số bệnh active"""
+    query = db.query(func.count(crud.disease.model.id)).filter(
+        crud.disease.model.included_in_diagnosis.is_(True)
+    )
+    
+    if not include_deleted:
+        query = query.filter(crud.disease.model.deleted_at.is_(None))
+        
+    return query.scalar()
+
+def count_all_diseases(include_deleted: bool, db: Session) -> int:
+    """Helper function để đếm tất cả bệnh"""
+    query = db.query(func.count(crud.disease.model.id))
+    
+    if not include_deleted:
+        query = query.filter(crud.disease.model.deleted_at.is_(None))
+        
+    return query.scalar()
 
 def get_diseases_by_search(search_term: str, skip: int, limit: int, include_deleted: bool, db: Session):
     """Helper function để tìm kiếm bệnh"""
@@ -213,9 +270,15 @@ async def delete_disease(disease_id: str, soft_delete: bool = True, deleted_by: 
     
     return {"success": True, "disease_id": disease_id}
 
-async def get_disease_by_domain(domain_id: str, skip: int = 0, limit: int = 100, include_deleted: bool = False, db: Session = None) -> List[Dict[str, Any]]:
-    """Lấy danh sách các bệnh theo domain"""
+async def get_disease_by_domain(domain_id: str, skip: int = 0, limit: int = 100, include_deleted: bool = False, db: Session = None) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Lấy danh sách các bệnh theo domain
+    
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách bệnh và tổng số records
+    """
     diseases = get_diseases_by_domain(domain_id, skip, limit, include_deleted, db)
+    total = count_diseases_by_domain(domain_id, include_deleted, db)
     
     # Trả về danh sách đã bao gồm thông tin hình ảnh
     result = []
@@ -241,11 +304,17 @@ async def get_disease_by_domain(domain_id: str, skip: int = 0, limit: int = 100,
         
         result.append(disease_dict)
     
-    return result
+    return result, total
 
-async def search_diseases(search_term: str, skip: int = 0, limit: int = 100, include_deleted: bool = False, db: Session = None) -> List[Dict[str, Any]]:
-    """Tìm kiếm bệnh theo tên hoặc mô tả"""
+async def search_diseases(search_term: str, skip: int = 0, limit: int = 100, include_deleted: bool = False, db: Session = None) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Tìm kiếm bệnh theo tên hoặc mô tả
+    
+    Returns:
+        Tuple[List[Dict[str, Any]], int]: Danh sách bệnh và tổng số records
+    """
     diseases = get_diseases_by_search(search_term, skip, limit, include_deleted, db)
+    total = count_diseases_by_search(search_term, include_deleted, db)
     
     # Trả về danh sách đã bao gồm thông tin hình ảnh
     result = []
@@ -271,4 +340,4 @@ async def search_diseases(search_term: str, skip: int = 0, limit: int = 100, inc
         
         result.append(disease_dict)
     
-    return result 
+    return result, total 
