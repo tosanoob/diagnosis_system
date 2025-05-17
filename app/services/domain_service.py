@@ -118,7 +118,7 @@ async def update_domain(domain_id: str, domain_data: DomainUpdate, db: Session, 
     return result
 
 async def delete_domain(domain_id: str, soft_delete: bool = True, deleted_by: Optional[str] = None, db: Session = None) -> Dict[str, Any]:
-    """Xóa domain"""
+    """Xóa domain và tất cả các bệnh thuộc domain đó"""
     domain = crud.domain.get(db, id=domain_id)
     if not domain:
         raise HTTPException(status_code=404, detail="Không tìm thấy domain")
@@ -126,17 +126,20 @@ async def delete_domain(domain_id: str, soft_delete: bool = True, deleted_by: Op
     if domain.deleted_at is not None:
         raise HTTPException(status_code=400, detail="Domain đã bị xóa trước đó")
     
-    # Kiểm tra xem có bệnh nào đang sử dụng domain này không
-    diseases_count = db.query(crud.disease.model).filter(
+    # Lấy tất cả các bệnh thuộc domain này
+    diseases = db.query(crud.disease.model).filter(
         crud.disease.model.domain_id == domain_id,
         crud.disease.model.deleted_at.is_(None)
-    ).count()
+    ).all()
     
-    # Bỏ đoạn validation này để phù hợp với logic xóa dataset
-    # Vì khi xóa dataset chúng ta cần xóa cả domain và tất cả bệnh
-    # if diseases_count > 0:
-    #    raise HTTPException(status_code=400, detail=f"Không thể xóa domain vì có {diseases_count} bệnh đang sử dụng nó")
+    # Xóa tất cả các bệnh thuộc domain
+    for disease in diseases:
+        if soft_delete:
+            crud.disease.soft_delete(db, id=disease.id, deleted_by=deleted_by)
+        else:
+            crud.disease.remove(db, id=disease.id)
     
+    # Xóa domain
     if soft_delete:
         deleted_domain = crud.domain.soft_delete(db, id=domain_id, deleted_by=deleted_by)
     else:
@@ -144,6 +147,7 @@ async def delete_domain(domain_id: str, soft_delete: bool = True, deleted_by: Op
     
     # Trả về một dict sạch không chứa _sa_instance_state
     result = {k: v for k, v in deleted_domain.__dict__.items() if k != "_sa_instance_state"}
+    result["diseases_deleted"] = len(diseases)
     return result
 
 async def search_domains(search_term: str, skip: int = 0, limit: int = 100, include_deleted: bool = False, db: Session = None) -> List[Dict[str, Any]]:

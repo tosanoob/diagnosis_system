@@ -52,16 +52,46 @@ async def logout(logout_data: LogoutRequest, db: Session = Depends(get_db)):
     return result
 
 # Hàm dependency để xác thực token
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login", auto_error=False)
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-) -> Dict[str, Any]:
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    required: bool = True
+) -> Optional[Dict[str, Any]]:
     """
     Xác thực token và trả về thông tin người dùng
+    
+    Args:
+        token: Token xác thực từ header
+        db: Database session
+        required: Nếu True, sẽ raise HTTPException khi không có token hoặc token không hợp lệ
+                 Nếu False, sẽ trả về None khi không có token hoặc token không hợp lệ
+    
+    Returns:
+        Dict chứa thông tin người dùng hoặc None nếu không có token và required=False
     """
-    return await verify_token(token=token, db=db)
+    if not token:
+        if required:
+            raise HTTPException(status_code=401, detail="Token không được cung cấp")
+        return None
+    
+    try:
+        return await verify_token(token=token, db=db)
+    except HTTPException as e:
+        if required:
+            raise e
+        return None
+
+async def get_optional_user(
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> Optional[Dict[str, Any]]:
+    """
+    Dependency function để xác thực token tùy chọn
+    Trả về None nếu không có token hoặc token không hợp lệ
+    """
+    return await get_current_user(token=token, db=db, required=False)
 
 # Dependency để xác thực token từ header Authorization
 async def get_user_from_header(

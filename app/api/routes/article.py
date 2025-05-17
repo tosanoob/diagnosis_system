@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.sqlite_service import get_db
 from app.services import article_service
 from app.models.database import Article, ArticleCreate, ArticleUpdate
-from app.api.routes.auth import get_current_user
+from app.api.routes.auth import get_current_user, get_optional_user
 
 router = APIRouter()
 
@@ -15,20 +15,29 @@ async def get_articles(
     limit: int = 100,
     search: Optional[str] = None,
     author_id: Optional[str] = None,
-    db: Session = Depends(get_db)
+    include_deleted: bool = False,
+    db: Session = Depends(get_db),
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
     Lấy danh sách các bài viết
     """
+    # Nếu không có token hoặc không phải admin và muốn xem cả những record đã xóa
+    if not current_user or (include_deleted and current_user.get("role", "").lower() != "admin"):
+        include_deleted = False
+
     articles = await article_service.get_all_articles(
         skip=skip,
         limit=limit,
         search=search,
         author_id=author_id,
+        include_deleted=include_deleted,
         db=db
     )
-    # Filter out soft-deleted articles
-    return [article for article in articles if not article.get("deleted_at")]
+    # Filter out soft-deleted articles if not admin
+    if not include_deleted:
+        return [article for article in articles if not article.get("deleted_at")]
+    return articles
 
 @router.post("/", response_model=Dict[str, Any])
 async def create_article(

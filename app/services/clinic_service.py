@@ -13,13 +13,17 @@ async def get_all_clinics(
     skip: int = 0,
     limit: int = 100,
     search: Optional[str] = None,
+    include_deleted: bool = False,
     db: Session = None
 ) -> List[Dict[str, Any]]:
     """Lấy danh sách các phòng khám"""
     if search:
         clinics = crud.clinic.search_clinics(db, search, skip=skip, limit=limit)
     else:
-        clinics = crud.clinic.get_all(db, skip=skip, limit=limit)
+        query = db.query(crud.clinic.model)
+        if not include_deleted:
+            query = query.filter(crud.clinic.model.deleted_at.is_(None))
+        clinics = query.offset(skip).limit(limit).all()
     
     # Lấy thông tin người tạo cho mỗi phòng khám
     result = []

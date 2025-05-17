@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.sqlite_service import get_db
 from app.services import clinic_service
 from app.models.database import Clinic, ClinicCreate, ClinicUpdate
-from app.api.routes.auth import get_current_user
+from app.api.routes.auth import get_current_user, get_optional_user
 
 router = APIRouter()
 
@@ -14,19 +14,28 @@ async def get_clinics(
     skip: int = 0, 
     limit: int = 100,
     search: Optional[str] = None,
-    db: Session = Depends(get_db)
+    include_deleted: bool = False,
+    db: Session = Depends(get_db),
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
     Lấy danh sách các phòng khám
     """
+    # Nếu không có token hoặc không phải admin và muốn xem cả những record đã xóa
+    if not current_user or (include_deleted and current_user.get("role", "").lower() != "admin"):
+        include_deleted = False
+
     clinics = await clinic_service.get_all_clinics(
         skip=skip,
         limit=limit,
         search=search,
+        include_deleted=include_deleted,
         db=db
     )
-    # Filter out soft-deleted clinics
-    return [clinic for clinic in clinics if not clinic.get("deleted_at")]
+    # Filter out soft-deleted clinics if not admin
+    if not include_deleted:
+        return [clinic for clinic in clinics if not clinic.get("deleted_at")]
+    return clinics
 
 @router.post("/", response_model=Dict[str, Any])
 async def create_clinic(

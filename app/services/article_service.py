@@ -14,6 +14,7 @@ async def get_all_articles(
     limit: int = 100,
     search: Optional[str] = None,
     author_id: Optional[str] = None,
+    include_deleted: bool = False,
     db: Session = None
 ) -> List[Dict[str, Any]]:
     """Lấy danh sách các bài viết"""
@@ -22,7 +23,10 @@ async def get_all_articles(
     elif author_id:
         articles = crud.article.get_by_author(db, author_id, skip=skip, limit=limit)
     else:
-        articles = crud.article.get_all(db, skip=skip, limit=limit)
+        query = db.query(crud.article.model)
+        if not include_deleted:
+            query = query.filter(crud.article.model.deleted_at.is_(None))
+        articles = query.offset(skip).limit(limit).all()
     
     # Lấy thông tin người tạo cho mỗi bài viết
     result = []

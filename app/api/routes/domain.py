@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.sqlite_service import get_db
 from app.services import domain_service
 from app.models.database import Domain, DomainCreate, DomainUpdate
-from app.api.routes.auth import get_current_user, get_admin_user
+from app.api.routes.auth import get_current_user, get_admin_user, get_optional_user
 
 router = APIRouter()
 
@@ -15,13 +15,13 @@ async def get_domains(
     limit: int = 100,
     include_deleted: bool = False,
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
     Lấy danh sách các lĩnh vực y tế
     """
-    # Nếu không phải admin và muốn xem cả những record đã xóa
-    if include_deleted and current_user.get("role", "").lower() != "admin":
+    # Nếu không có token hoặc không phải admin và muốn xem cả những record đã xóa
+    if not current_user or (include_deleted and current_user.get("role", "").lower() != "admin"):
         include_deleted = False
         
     return await domain_service.get_all_domains(

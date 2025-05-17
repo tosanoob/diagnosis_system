@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.sqlite_service import get_db
 from app.services import disease_service
 from app.models.database import Disease, DiseaseCreate, DiseaseUpdate
-from app.api.routes.auth import get_current_user, get_admin_user
+from app.api.routes.auth import get_current_user, get_admin_user, get_optional_user
 from app.db import crud
 
 router = APIRouter()
@@ -19,14 +19,15 @@ async def get_diseases(
     search: Optional[str] = None,
     include_deleted: bool = False,
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
     Lấy danh sách các bệnh
     """
-    # Nếu không phải admin và muốn xem cả những record đã xóa
-    if include_deleted and current_user.get("role", "").lower() != "admin":
+    # Nếu không có token hoặc không phải admin và muốn xem cả những record đã xóa
+    if not current_user or (include_deleted and current_user.get("role", "").lower() != "admin"):
         include_deleted = False
+        active_only = True
     
     return await disease_service.get_all_diseases(
         skip=skip,
@@ -57,7 +58,7 @@ async def create_disease(
 async def get_disease(
     disease_id: str = Path(..., description="ID của bệnh"),
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(lambda: get_current_user(required=False))
 ):
     """
     Lấy thông tin chi tiết của một bệnh
@@ -111,7 +112,7 @@ async def get_diseases_by_domain(
     limit: int = 100,
     include_deleted: bool = False,
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(lambda: get_current_user(required=False))
 ):
     """
     Lấy danh sách các bệnh theo domain
@@ -135,7 +136,7 @@ async def search_diseases(
     limit: int = 100,
     include_deleted: bool = False,
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(lambda: get_current_user(required=False))
 ):
     """
     Tìm kiếm bệnh theo tên hoặc mô tả
@@ -159,7 +160,7 @@ async def get_diseases_by_domain_simple(
     limit: int = 100, 
     include_deleted: bool = False,
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(lambda: get_current_user(required=False))
 ):
     """
     Lấy danh sách tối giản các bệnh thuộc một domain (chỉ bao gồm id, label, domain_id)
