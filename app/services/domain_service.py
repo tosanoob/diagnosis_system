@@ -52,6 +52,25 @@ async def get_domain_by_id(domain_id: str, db: Session) -> Dict[str, Any]:
     
     return result
 
+async def get_domain_by_name(domain_name: str, db: Session) -> Optional[Dict[str, Any]]:
+    """Lấy thông tin domain theo tên"""
+    domain = crud.domain.get_by_name(db, domain_name)
+    if not domain:
+        return None
+    
+    # Loại bỏ _sa_instance_state
+    result = {k: v for k, v in domain.__dict__.items() if k != "_sa_instance_state"}
+    
+    # Lấy số lượng bệnh thuộc domain này
+    disease_count = db.query(crud.disease.model).filter(
+        crud.disease.model.domain_id == domain.id,
+        crud.disease.model.deleted_at.is_(None)
+    ).count()
+    
+    result["disease_count"] = disease_count
+    
+    return result
+
 async def create_domain(domain_data: DomainCreate, db: Session, created_by: Optional[str] = None) -> Dict[str, Any]:
     """Tạo một domain mới"""
     # Kiểm tra xem domain đã tồn tại chưa
@@ -113,8 +132,10 @@ async def delete_domain(domain_id: str, soft_delete: bool = True, deleted_by: Op
         crud.disease.model.deleted_at.is_(None)
     ).count()
     
-    if diseases_count > 0:
-        raise HTTPException(status_code=400, detail=f"Không thể xóa domain vì có {diseases_count} bệnh đang sử dụng nó")
+    # Bỏ đoạn validation này để phù hợp với logic xóa dataset
+    # Vì khi xóa dataset chúng ta cần xóa cả domain và tất cả bệnh
+    # if diseases_count > 0:
+    #    raise HTTPException(status_code=400, detail=f"Không thể xóa domain vì có {diseases_count} bệnh đang sử dụng nó")
     
     if soft_delete:
         deleted_domain = crud.domain.soft_delete(db, id=domain_id, deleted_by=deleted_by)

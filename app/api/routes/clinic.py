@@ -37,6 +37,7 @@ async def create_clinic(
     """
     Tạo phòng khám mới
     """
+    print(current_user)
     return await clinic_service.create_clinic(
         clinic_data=clinic,
         creator_id=current_user["user_id"],
@@ -66,6 +67,7 @@ async def update_clinic(
     """
     Cập nhật thông tin phòng khám
     """
+    print(current_user)
     return await clinic_service.update_clinic(
         clinic_id=clinic_id,
         clinic_data=clinic,

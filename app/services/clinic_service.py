@@ -79,10 +79,17 @@ async def create_clinic(clinic_data: ClinicCreate, creator_id: Optional[str], db
         creator = crud.user.get(db, id=creator_id)
         if not creator:
             raise HTTPException(status_code=404, detail="Người dùng không tồn tại")
+        
+        # Chuyển đổi từ Pydantic model sang dict
         clinic_dict = clinic_data.model_dump()
+        # Thêm thông tin người tạo
         clinic_dict["created_by"] = creator_id
+        # Cập nhật updated_by cùng với created_by
+        clinic_dict["updated_by"] = creator_id
+        # Tạo lại đối tượng ClinicCreate từ dict
         clinic_data = ClinicCreate(**clinic_dict)
     
+    # Tạo phòng khám mới
     clinic = crud.clinic.create(db, obj_in=clinic_data)
     
     # Trả về một dict sạch không chứa _sa_instance_state

@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # Image configuration
     IMAGE_BASE_URL: str = "runtime/image/"
 
+    # Hugging Face configuration
+    HF_TOKEN: Optional[str] = None
+
     @field_validator("GEMINI_API_KEY", "NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "EMBEDDING_URL", "EMBEDDING_API_KEY")
     def validate_not_none(cls, v, info):
         if v is None:
