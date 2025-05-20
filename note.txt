@@ -1,0 +1,8 @@
+Các câu hỏi thường sử dụng: => đưa ra các câu hỏi này ở frontend
+
+- Tổn thương này xuất hiện bao lâu rồi? - Thời gian tồn tại của tổn thương giúp xác định tính cấp tính hay mạn tính của bệnh.
+- Tổn thương này có thay đổi kích thước hoặc hình dạng trong thời gian gần đây không? - Sự thay đổi nhanh chóng về kích thước và hình dạng có thể chỉ ra một số bệnh lý nghiêm trọng hơn.
+- Bạn có bị đau ở vùng tổn thương không? - Đau là một triệu chứng quan trọng cần được xem xét.
+- Bạn có tiền sử gia đình mắc các bệnh về da không? - Một số bệnh da có tính di truyền.
+- Bạn có sử dụng bất kỳ loại thuốc hoặc mỹ phẩm nào gần đây không? - Thuốc hoặc mỹ phẩm có thể gây ra phản ứng dị ứng trên da.
+- Vị trí chính xác của tổn thương này ở đâu trên cơ thể? - Vị trí của tổn thương cũng có thể cung cấp manh mối quan trọng.

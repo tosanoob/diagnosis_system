@@ -5,7 +5,15 @@ from typing import List, Dict, Tuple, Optional, Any, Union
 import asyncio
 from app.db.chromadb_service import chromadb_instance
 from app.db.neo4j_service import neo4j_instance
-from app.services.llm_service import extract_keywords, get_image_caption, generate_with_image, gemini_llm_request
+from app.services.llm_service import (
+    extract_keywords, 
+    get_image_caption, 
+    generate_with_image, 
+    gemini_llm_request,
+    openai_to_gemini_history,
+    get_gemini_config,
+    general_gemini_request
+)
 from app.constants.enums import EntityType
 from app.models.domain import ReasoningPrompt
 from app.core.utils import (
@@ -14,7 +22,8 @@ from app.core.utils import (
     sort_text_results,
     sort_document_results,
     get_document,
-    softmax
+    softmax,
+    format_context
 )
 from app.core.logging import logger
 
@@ -61,7 +70,7 @@ async def retrieve_similar_images_async(image_base64: str) -> List:
     """Get similar images from ChromaDB"""
     similar_images = chromadb_instance.retrieve_image_info(image_base64, n_results=15)
     logger.app_info("Labels from images:")
-    image_labels = sort_image_results(similar_images)
+    image_labels = sort_image_results(similar_images, top_k=15)
     image_labels = [(item[0][:item[0].find('(')].strip(), item[1]) for item in image_labels]
     logger.app_info(image_labels)
     return image_labels
@@ -243,16 +252,6 @@ async def get_diagnosis(
     """
     system_prompt = ReasoningPrompt.SYSTEM_PROMPT
     
-    def format_context(all_labels, label_documents):
-        context = ''
-        len_labels = len(all_labels)
-        for i in range(len_labels):
-            context += f'**Tên bệnh:** {all_labels[i][0]}\n'
-            context += f'**Điểm số:** {all_labels[i][1]}\n'
-            context += f'**Thông tin dữ liệu về bệnh:** {label_documents[i]}\n'
-            context += '-----------------------------------\n'
-        return context
-    
     if isinstance(image_base64, list) and image_base64:
         image_base64 = image_base64[0]  # Chỉ sử dụng ảnh đầu tiên nếu có nhiều ảnh
     
@@ -271,3 +270,66 @@ async def get_diagnosis(
     else:
         raise ValueError("No input provided")
     return all_labels,response 
+
+# ---- multi-turn diagnosis from image only ----
+
+async def get_first_diagnosis_v2(image_base64: str, text: str = None) -> Tuple[str, List]:
+    """Get context from image only"""
+    all_labels, label_documents = await image_diagnosis_only_async(image_base64)
+    
+    reasoning_prompt = ReasoningPrompt.format_prompt_first(text, True, format_context(all_labels, label_documents))
+    response = generate_with_image(image_base64, ReasoningPrompt.IMAGE_ONLY_SYSTEM_PROMPT, reasoning_prompt, max_tokens=10000)
+
+    chat_history = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": text
+                } if text else None,
+                {
+                    "type": "image",
+                    "image": image_base64,
+                    "mime_type": "image/jpeg"
+                }
+            ]
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": response
+                }
+            ]
+        }
+    ]
+    return response, chat_history
+
+async def get_later_diagnosis_v2(chat_history: List, text: str = None) -> Tuple[str, List]:
+    """Get later diagnosis from chat history"""
+    reasoning_prompt = ReasoningPrompt.format_prompt_later(text)
+    chat_history.append({
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": reasoning_prompt
+            }
+        ]
+    })
+    gemini_history = openai_to_gemini_history(chat_history)
+    
+    response = general_gemini_request(contents=gemini_history, config=get_gemini_config())
+    chat_history.append({
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": response    
+            }
+        ]
+    })
+    return response, chat_history
+

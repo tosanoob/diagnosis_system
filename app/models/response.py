@@ -18,6 +18,13 @@ class DiagnosisResponse(BaseModel):
     labels: List[Tuple[str, float]] = Field(..., description="The list of labels and their scores")
     response: str = Field(..., description="The response of the diagnosis")
 
+class ImageOnlyMultiTurnResponse(BaseModel):
+    """
+    Response model for image-only multi-turn diagnosis endpoint
+    """
+    response: str = Field(..., description="The response of the diagnosis")
+    chat_history: List[Dict] = Field(..., description="The chat history of the conversation, include the new turn")
+
 class ContextResponse(BaseModel):
     """
     Response model for context endpoint

@@ -86,6 +86,102 @@ def generate_with_image(
         logger.error(f"Lỗi khi sử dụng Gemini với ảnh: {str(e)}")
         return "Không thể phân tích ảnh."
 
+def openai_to_gemini_history(history: List[Dict]) -> List[types.Content]:
+    """
+    Chuyển đổi lịch sử chat từ OpenAI sang định dạng Gemini
+    OpenAI:
+    [
+        {
+            "role": "user",
+            "content": [{
+                "type": "text",
+                "text": "Hello, how are you?"
+            },
+            {
+                "type": "image",
+                "mime_type": "image/jpeg",
+                "image": "<base64_image>"
+            }
+            ]
+        },
+        {
+            "role": "assistant",
+            "content": {
+                "type": "text",
+                "text": "I'm doing well, thank you!"
+            }
+        }
+    ]
+    Gemini:
+    [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text="Hello, how are you?"),
+                types.Part.from_image(image=image_base64)
+            ]
+        ),
+        types.Content(
+            role="model",
+            parts=[
+                types.Part.from_text(text="I'm doing well, thank you!")
+            ]
+        )
+    ]
+    """
+    gemini_history = []
+    for item in history:
+        if item["role"] == "user":
+            gemini_role = "user"
+        elif item["role"] == "assistant":
+            gemini_role = "model"
+        gemini_content_parts = []
+        if isinstance(item["content"], list):
+            for content in item["content"]:
+                if content["type"] == "text":
+                    gemini_content_parts.append(types.Part.from_text(text=content["text"]))
+                elif content["type"] == "image":
+                    gemini_content_parts.append(types.Part.from_bytes(data=content["image"], mime_type=content["mime_type"]))
+        gemini_history.append(types.Content(role=gemini_role, parts=gemini_content_parts))
+    return gemini_history
+
+def get_gemini_config(
+    temperature: float = 0.0,
+    max_tokens: int = 5000,
+    response_mime_type: str = "text/plain",
+    system_instruction: str = "",
+) -> types.GenerateContentConfig:
+    return types.GenerateContentConfig(
+        response_mime_type=response_mime_type,
+        system_instruction=[
+            types.Part.from_text(text=system_instruction),
+        ],
+        temperature=temperature,
+        max_output_tokens=max_tokens
+    )
+
+def general_gemini_request(
+    model: str = "gemini-1.5-flash",
+    contents: List[types.Content] = [],
+    config: types.GenerateContentConfig = None
+) -> str:
+    """
+    Gửi yêu cầu đến Gemini LLM
+    """
+    client = genai.Client(
+        api_key=settings.GEMINI_API_KEY,
+    )
+    try:
+        result = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+        return result.text
+    except Exception as e:
+        logger.error(f"Lỗi khi sử dụng Gemini: {str(e)}")
+        return "Không thể xử lý yêu cầu."
+
 def gemini_llm_request(
         system_instruction: str, 
         user_instruction: str, 

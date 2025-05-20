@@ -27,9 +27,6 @@ class Settings(BaseSettings):
     
     # Đường dẫn thư mục
     CHROMA_DATA_PATH: str = "runtime/chroma_data"
-    MEDIMAGEINSIGHTS_MODEL_DIR: str = "runtime/models/MedImageInsights/2024.09.27"
-    MEDIMAGEINSIGHTS_VISION_MODEL: str = "medimageinsigt-v1.0.0.pt"
-    MEDIMAGEINSIGHTS_LANGUAGE_MODEL: str = "language_model.pth"
     
     # LLM API Keys và cấu hình
     GEMINI_API_KEY: Optional[str] = None
@@ -44,6 +41,9 @@ class Settings(BaseSettings):
     EMBEDDING_URL: Optional[str] = None
     EMBEDDING_API_KEY: Optional[str] = None
     EMBEDDING_MODEL: str = "bge-m3"
+
+    IMAGE_EMBEDDING_URL: Optional[str] = None
+    IMAGE_EMBEDDING_API_KEY: Optional[str] = None
     
     # SQLite configuration
     SQLITE_DB_PATH: str = "runtime/db.sqlite3"

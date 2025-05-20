@@ -22,6 +22,34 @@ def count_disease_scores(relation_list):
             disease_scores[disease] = disease_scores.get(disease, 0) + 1
     return disease_scores
 
+def dynamic_top_k(scores, drop_threshold=0.2, mean_threshold=0.5, top_k=15):
+    """
+    Dynamic top_k using the Gap algorithm, choose the suitable top_k based on the score drop value.
+    The score drop is calculated as log(score_0/score_i+1), assume the scores are sorted in descending order.
+    The mean score of top_k must be no less than mean_threshold, if not, the top_k will be reduced.
+    """
+    if len(scores) <= top_k:
+        return top_k
+    selected = []
+    for i in range(len(scores)):
+        if i == 0:
+            selected.append(scores[i])
+        else:
+            if scores[0] / scores[i] > drop_threshold:
+                selected.append(scores[i])
+    while True:
+        if len(selected) >= 0:
+            if sum(selected) / len(selected) >= mean_threshold:
+                break
+            else:
+                selected.pop()
+        else:
+            break
+    if len(selected) > top_k:
+        return top_k
+    else:
+        return len(selected)
+    
 def sort_image_results(image_results, method='weighted', top_k=3):
     """
     Sort the image results by distance with different scoring methods
@@ -39,11 +67,14 @@ def sort_image_results(image_results, method='weighted', top_k=3):
         list: List of tuples (label, score) sorted by score from low to high, limited to top_k results
     """
     sorted_image_results = sorted(image_results, key=lambda x: x['distance'])
+    
+    top_k = dynamic_top_k([item['distance'] for item in sorted_image_results], drop_threshold=0.2, mean_threshold=0.5, top_k=15)
+    sorted_image_results = sorted_image_results[:top_k]
+    
     labels = [item['label'] for item in sorted_image_results]
     labels = list(set(labels))
     label_score = {}
     label_count = {}
-    
     # Initialize scores and counts
     for label in labels:
         label_score[label] = 0
@@ -291,3 +322,13 @@ def softmax(scores):
     exp_scores = [np.exp(score) for score in scores]
     sum_exp_scores = sum(exp_scores)
     return [exp_score / sum_exp_scores for exp_score in exp_scores]
+
+def format_context(all_labels, label_documents):
+    context = ''
+    len_labels = len(all_labels)
+    for i in range(len_labels):
+        context += f'**Tên bệnh:** {all_labels[i][0]}\n'
+        context += f'**Điểm số:** {all_labels[i][1]}\n'
+        context += f'**Thông tin dữ liệu về bệnh:** {label_documents[i]}\n'
+        context += '-----------------------------------\n'
+    return context
