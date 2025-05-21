@@ -61,10 +61,16 @@ async def delete_dataset(
     Returns:
         Confirmation of deletion
     """
-    result = await dataset_service.delete_dataset(
-        domain_name=domain_name,
-        db=db,
-        user_id=current_user["user_id"]
-    )
-    
-    return result 
+    try:
+        result = await dataset_service.delete_dataset(
+            domain_name=domain_name,
+            db=db,
+            user_id=current_user["user_id"]
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

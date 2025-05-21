@@ -3,10 +3,11 @@ Cung cấp dịch vụ ChromaDB cho việc lưu trữ và truy vấn các embedd
 """
 from chromadb import PersistentClient, Documents, Embeddings, EmbeddingFunction
 from app.services.llm_service import embedding_request
+from app.services.image_service import encode_base64_images
 from app.core.config import settings
-from app.constants.enums import EntityType
 from app.core.logging import logger
 import traceback
+from typing import Literal
 
 class BGEM3EmbeddingFunction(EmbeddingFunction):
     def __init__(self):
@@ -15,18 +16,31 @@ class BGEM3EmbeddingFunction(EmbeddingFunction):
     def __call__(self, input: Documents) -> Embeddings:
         return self.embedding_function(input)
 
+class ImageEmbeddingFunction(EmbeddingFunction):
+    def __init__(self):
+        self.embedding_function = encode_base64_images
+
+    def __call__(self, input: Documents) -> Embeddings:
+        return self.embedding_function(input)
+
 class ChromaDBService:
     def __init__(self, path: str):
         self.client = PersistentClient(path=path)
         try:
-            self.keyword_collection = self.client.get_collection(
-                "entity-collection-ip", 
-                embedding_function=BGEM3EmbeddingFunction())
-            self.document_collection = self.client.get_collection(
-                "document-collection-ip", 
-                embedding_function=BGEM3EmbeddingFunction())
-            self.image_caption_collection = self.client.get_collection(
-                "image-caption-collection-ip", 
+            self.keyword_collection = self.client.get_or_create_collection(
+                settings.ENTITY_COLLECTION, 
+                embedding_function=BGEM3EmbeddingFunction(),
+                metadata={"hnsw:space": "ip"}
+                )
+            self.document_collection = self.client.get_or_create_collection(
+                settings.DOCUMENT_COLLECTION, 
+                embedding_function=BGEM3EmbeddingFunction(),
+                metadata={"hnsw:space": "ip"}
+                )
+            self.image_caption_collection = self.client.get_or_create_collection(
+                settings.IMAGE_COLLECTION, 
+                embedding_function=ImageEmbeddingFunction(),
+                metadata={"hnsw:space": "ip"}
                 )
         except Exception as e:
             logger.error(f"Lỗi khi khởi tạo ChromaDB: {str(e)}")
@@ -120,8 +134,6 @@ class ChromaDBService:
             dict: Top n ảnh tương tự với ngưỡng distance
         """
         try:
-            # Import trong hàm để tránh import circular
-            from app.services.image_service import encode_base64_images
             
             if isinstance(image_base64, str):
                 image_base64 = [image_base64]
@@ -156,6 +168,98 @@ class ChromaDBService:
             logger.error(f"Lỗi khi truy vấn hình ảnh: {str(e)}")
             logger.error(traceback.format_exc())
             return []
+
+    def add_image_caption(self, image_id: list[str], metadata: list[dict], embeddings: list[list[float]]):
+        """
+        Thêm thông tin hình ảnh vào ChromaDB
+        Args:
+            image_id: ID của hình ảnh
+            metadata: Thông tin hình ảnh
+            embeddings: Embeddings của hình ảnh
+        """
+        self.image_caption_collection.add(
+            ids=image_id,
+            embeddings=embeddings,
+            metadatas=metadata
+        )
+
+    def create_mapping(self, domain_id: str, domain_disease_id: str, label_id: str, label: str):
+        """
+        Tạo mapping mới giữa domain_id. và bệnh chuẩn
+        Args:
+            domain_id: ID của domain
+            domain_disease_id: ID của bệnh trong domain
+            label_id: ID của bệnh chuẩn ánh xạ tới
+            label: Tên của bệnh chuẩn ánh xạ tới
+        """
+        update_records = self.image_caption_collection.get(
+            where={"domain_id": domain_id, "domain_disease_id": domain_disease_id},
+            include=["metadatas"]
+        )
+        ids = update_records.get("ids")
+        metadatas = update_records.get("metadatas")
+        if len(update_records) > 0:
+            for item in update_records:
+                item["label_id"] = label_id
+                item["label"] = label
+                item["is_disabled"] = False
+        self.image_caption_collection.update(
+            ids=ids,
+            metadatas=metadatas
+        )
+
+    def delete_mapping(self, domain_id: str, domain_disease_id: str):
+        """
+        Xóa mapping giữa domain_id và bệnh trong domain (xóa mềm và tạm thời disable các ảnh này)
+        Args:
+            domain_id: ID của domain
+            domain_disease_id: ID của bệnh trong domain
+        """
+        update_records = self.image_caption_collection.get(
+            where={"domain_id": domain_id, "domain_disease_id": domain_disease_id},
+            include=["metadatas"]
+        )
+        ids = update_records.get("ids")
+        metadatas = update_records.get("metadatas")
+        for item in metadatas:
+            item["is_disabled"] = True
+            item["label"] = ""
+            item["label_id"] = ""
+        self.image_caption_collection.update(
+            ids=ids,
+            metadatas=metadatas
+        )
+
+    def modify_state_standard_disease(self, label_id: str, label: str, option: Literal["enable", "disable"] = "enable"):
+        """
+        Cập nhật lại trạng thái enable/disable của bệnh chuẩn
+        Args:
+            label_id: ID của bệnh chuẩn
+            label: Tên của bệnh chuẩn
+        """
+        is_disabled = True if option == "disable" else False
+        update_records = self.image_caption_collection.get(
+            where={"label":label, "label_id": label_id},
+            include=["metadatas"]
+        )
+        ids = update_records.get("ids")
+        metadatas = update_records.get("metadatas")
+        for item in metadatas:
+            item["is_disabled"] = is_disabled
+            item["label"] = ""
+            item["label_id"] = ""
+        self.image_caption_collection.update(
+            ids=ids,
+            metadatas=metadatas
+        )
+
+    def delete_entire_domain(self, domain_id: str):
+        """
+        Xóa toàn bộ dữ liệu của domain phụ cụ thể
+        Args:
+            domain_id: ID của domain
+        """
+        self.image_caption_collection.delete(where={"domain_id": domain_id})
 
 # Khởi tạo instance với đường dẫn từ cấu hình
 chromadb_instance = ChromaDBService(settings.CHROMA_DATA_PATH) 
