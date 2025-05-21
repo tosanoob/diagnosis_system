@@ -8,6 +8,7 @@ from sqlalchemy import or_, func
 
 from app.db import crud
 from app.models.database import DiseaseCreate, DiseaseUpdate
+from app.db.chromadb_service import chromadb_instance
 
 async def get_all_diseases(
     skip: int = 0,
@@ -230,6 +231,17 @@ async def update_disease(disease_id: str, disease_data: DiseaseUpdate, db: Sessi
     if disease.deleted_at is not None:
         raise HTTPException(status_code=400, detail="Không thể cập nhật bệnh đã bị xóa")
     
+    # Lưu trữ trạng thái included_in_diagnosis ban đầu để so sánh sau này
+    has_included_in_diagnosis_changed = False
+    if hasattr(disease_data, "included_in_diagnosis") and disease_data.included_in_diagnosis is not None:
+        has_included_in_diagnosis_changed = disease.included_in_diagnosis != disease_data.included_in_diagnosis
+    
+    # Xác định domain hiện tại
+    current_domain = None
+    domain_id_to_check = disease_data.domain_id if disease_data.domain_id else disease.domain_id
+    if domain_id_to_check:
+        current_domain = crud.domain.get(db, id=domain_id_to_check)
+    
     # Kiểm tra xem domain có tồn tại không
     if disease_data.domain_id:
         domain = crud.domain.get(db, id=disease_data.domain_id)
@@ -252,6 +264,23 @@ async def update_disease(disease_id: str, disease_data: DiseaseUpdate, db: Sessi
         disease_data = DiseaseUpdate(**disease_dict)
     
     updated_disease = crud.disease.update(db, db_obj=disease, obj_in=disease_data)
+    
+    # Kiểm tra nếu đây là domain STANDARD và included_in_diagnosis đã thay đổi
+    if current_domain and current_domain.domain.upper() == "STANDARD" and has_included_in_diagnosis_changed:
+        # Xác định label_id và label
+        label_id = updated_disease.id
+        label = updated_disease.label
+        
+        # Xác định option dựa trên giá trị included_in_diagnosis mới
+        option = "enable" if updated_disease.included_in_diagnosis else "disable"
+        
+        # Gọi hàm modify_state_standard_disease để cập nhật trạng thái
+        try:
+            chromadb_instance.modify_state_standard_disease(label_id=label_id, label=label, option=option)
+        except Exception as e:
+            # Log lỗi nhưng không ảnh hưởng đến việc trả về kết quả
+            from app.core.logging import logger
+            logger.error(f"Lỗi khi cập nhật trạng thái bệnh chuẩn trong ChromaDB: {str(e)}")
     
     # Trả về một dict sạch không chứa _sa_instance_state
     result = {k: v for k, v in updated_disease.__dict__.items() if k != "_sa_instance_state"}

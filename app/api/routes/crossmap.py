@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.sqlite_service import get_db
 from app.services import disease_domain_crossmap_service
-from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossmapUpdate, DiseaseDomainCrossmapBatchCreate
+from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossmapUpdate, DiseaseDomainCrossmapBatchCreate, StandardDomainCrossmapBatchUpdate
 from app.api.routes.auth import get_current_user, get_admin_user
 
 router = APIRouter()
@@ -136,6 +136,23 @@ async def create_crossmaps_batch(
     """
     return await disease_domain_crossmap_service.create_crossmaps_batch(
         crossmaps_data=batch_data.crossmaps,
+        db=db,
+        created_by=current_user["user_id"]
+    )
+
+@router.post("/batch/standard", response_model=Dict[str, Any])
+async def batch_update_standard_domain_crossmaps(
+    batch_data: StandardDomainCrossmapBatchUpdate = Body(...),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_admin_user)  # Chỉ admin mới được tạo hàng loạt ánh xạ
+):
+    """
+    Tạo batch ánh xạ từ domain STANDARD sang domain khác, 
+    xóa tất cả ánh xạ cũ và tạo mới, đồng thời cập nhật vectordb
+    """
+    return await disease_domain_crossmap_service.batch_update_standard_domain_crossmaps(
+        target_domain_id=batch_data.target_domain_id,
+        crossmaps_lite=batch_data.crossmaps_lite,
         db=db,
         created_by=current_user["user_id"]
     ) 

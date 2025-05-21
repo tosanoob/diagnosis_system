@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.db import crud
 from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossmapUpdate
+from app.db.chromadb_service import chromadb_instance
+from app.core.logging import logger
 
 async def get_all_crossmaps(
     skip: int = 0,
@@ -361,5 +363,160 @@ async def create_crossmaps_batch(
         "total": len(crossmaps_data),
         "success_count": len(results["success"]),
         "failed_count": len(results["failed"]),
+        "results": results
+    }
+
+async def batch_update_standard_domain_crossmaps(
+    target_domain_id: str, 
+    crossmaps_lite: List[Dict[str, str]], 
+    db: Session,
+    created_by: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Tạo batch ánh xạ từ domain STANDARD sang domain target, xóa tất cả ánh xạ cũ và tạo mới
+    
+    Args:
+        target_domain_id: ID của domain đích
+        crossmaps_lite: Danh sách các cặp {"standard_disease_id": "...", "target_disease_id": "..."}
+        db: Database session
+        created_by: Người tạo ánh xạ
+        
+    Returns:
+        Dict[str, Any]: Kết quả xử lý batch
+    """
+    # Kiểm tra target domain có tồn tại không
+    target_domain = crud.domain.get(db, id=target_domain_id)
+    if not target_domain or target_domain.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Domain đích không tồn tại hoặc đã bị xóa")
+    
+    # Tìm domain STANDARD
+    standard_domain = db.query(crud.domain.model).filter(
+        crud.domain.model.domain.ilike("STANDARD"),
+        crud.domain.model.deleted_at.is_(None)
+    ).first()
+    
+    if not standard_domain:
+        raise HTTPException(status_code=404, detail="Không tìm thấy domain STANDARD")
+    
+    standard_domain_id = standard_domain.id
+    
+    # Xóa tất cả ánh xạ cũ giữa domain STANDARD và domain target
+    existing_crossmaps = db.query(crud.disease_domain_crossmap.model).filter(
+        ((crud.disease_domain_crossmap.model.domain_id_1 == standard_domain_id) & 
+         (crud.disease_domain_crossmap.model.domain_id_2 == target_domain_id)) | 
+        ((crud.disease_domain_crossmap.model.domain_id_1 == target_domain_id) & 
+         (crud.disease_domain_crossmap.model.domain_id_2 == standard_domain_id))
+    ).all()
+    
+    # Xóa ánh xạ trong ChromaDB
+    for crossmap in existing_crossmaps:
+        try:
+            # Xác định đâu là domain và disease từ STANDARD
+            if crossmap.domain_id_1 == standard_domain_id:
+                standard_disease_id = crossmap.disease_id_1
+                target_disease_id = crossmap.disease_id_2
+            else:
+                standard_disease_id = crossmap.disease_id_2
+                target_disease_id = crossmap.disease_id_1
+            
+            # Gọi hàm delete_mapping để xóa trong ChromaDB
+            chromadb_instance.delete_mapping(
+                domain_id=target_domain_id, 
+                domain_disease_id=target_disease_id
+            )
+        except Exception as e:
+            logger.error(f"Lỗi khi xóa ánh xạ từ ChromaDB: {str(e)}")
+    
+    # Xóa crossmaps trong database
+    for crossmap in existing_crossmaps:
+        db.delete(crossmap)
+    db.commit()
+    
+    # Tạo các ánh xạ mới
+    results = {
+        "success": [],
+        "failed": []
+    }
+    
+    for idx, crossmap_lite in enumerate(crossmaps_lite):
+        try:
+            standard_disease_id = crossmap_lite.get("standard_disease_id")
+            target_disease_id = crossmap_lite.get("target_disease_id")
+            
+            if not standard_disease_id or not target_disease_id:
+                raise ValueError("Thiếu standard_disease_id hoặc target_disease_id")
+                
+            # Kiểm tra các disease có tồn tại không
+            standard_disease = crud.disease.get(db, id=standard_disease_id)
+            target_disease = crud.disease.get(db, id=target_disease_id)
+            
+            if not standard_disease or standard_disease.deleted_at is not None:
+                raise ValueError(f"Bệnh chuẩn (standard_disease_id={standard_disease_id}) không tồn tại hoặc đã bị xóa")
+                
+            if not target_disease or target_disease.deleted_at is not None:
+                raise ValueError(f"Bệnh đích (target_disease_id={target_disease_id}) không tồn tại hoặc đã bị xóa")
+            
+            # Kiểm tra disease có thuộc domain tương ứng không
+            if standard_disease.domain_id != standard_domain_id:
+                raise ValueError(f"Bệnh chuẩn (standard_disease_id={standard_disease_id}) không thuộc domain STANDARD")
+                
+            if target_disease.domain_id != target_domain_id:
+                raise ValueError(f"Bệnh đích (target_disease_id={target_disease_id}) không thuộc domain đích")
+            
+            # Tạo crossmap mới
+            crossmap_dict = {
+                "disease_id_1": standard_disease_id,
+                "domain_id_1": standard_domain_id,
+                "disease_id_2": target_disease_id,
+                "domain_id_2": target_domain_id
+            }
+            
+            # Thêm trường created_by vào dict nếu có
+            if created_by:
+                crossmap_dict["created_by"] = created_by
+                
+            # Tạo model từ dict
+            crossmap_data = DiseaseDomainCrossmapCreate(**crossmap_dict)
+                
+            new_crossmap = crud.disease_domain_crossmap.create(db, obj_in=crossmap_data)
+            
+            # Tạo ánh xạ trong ChromaDB
+            try:
+                chromadb_instance.create_mapping(
+                    domain_id=target_domain_id,
+                    domain_disease_id=target_disease_id,
+                    label_id=standard_disease_id,
+                    label=standard_disease.label
+                )
+            except Exception as e:
+                import traceback
+                print(traceback.format_exc())
+                logger.error(f"Lỗi khi tạo ánh xạ trong ChromaDB: {str(e)}")
+            
+            # Thêm vào kết quả thành công
+            results["success"].append({
+                "id": new_crossmap.id,
+                "standard_disease_id": standard_disease_id,
+                "standard_disease_label": standard_disease.label,
+                "target_disease_id": target_disease_id,
+                "target_disease_label": target_disease.label
+            })
+            
+        except Exception as e:
+            # Thêm vào kết quả thất bại
+            results["failed"].append({
+                "data": crossmap_lite,
+                "error": str(e),
+                "index": idx
+            })
+    
+    return {
+        "total": len(crossmaps_lite),
+        "success_count": len(results["success"]),
+        "failed_count": len(results["failed"]),
+        "target_domain_id": target_domain_id,
+        "target_domain_name": target_domain.domain,
+        "standard_domain_id": standard_domain_id,
+        "standard_domain_name": standard_domain.domain,
         "results": results
     } 

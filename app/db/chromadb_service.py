@@ -147,7 +147,9 @@ class ChromaDBService:
             # Truy vấn ChromaDB với embeddings
             query_results = self.image_caption_collection.query(
                 query_embeddings=embeddings,
-                n_results=n_results)
+                n_results=n_results,
+                where={"is_disabled": False}
+            )
                 
             # Xử lý kết quả
             final_results = []
@@ -193,13 +195,13 @@ class ChromaDBService:
             label: Tên của bệnh chuẩn ánh xạ tới
         """
         update_records = self.image_caption_collection.get(
-            where={"domain_id": domain_id, "domain_disease_id": domain_disease_id},
+            where={"$and": [{"domain_id": domain_id}, {"domain_disease_id": domain_disease_id}]},
             include=["metadatas"]
         )
         ids = update_records.get("ids")
         metadatas = update_records.get("metadatas")
         if len(update_records) > 0:
-            for item in update_records:
+            for item in metadatas:
                 item["label_id"] = label_id
                 item["label"] = label
                 item["is_disabled"] = False
@@ -216,19 +218,20 @@ class ChromaDBService:
             domain_disease_id: ID của bệnh trong domain
         """
         update_records = self.image_caption_collection.get(
-            where={"domain_id": domain_id, "domain_disease_id": domain_disease_id},
+            where={"$and": [{"domain_id": domain_id}, {"domain_disease_id": domain_disease_id}]},
             include=["metadatas"]
         )
         ids = update_records.get("ids")
         metadatas = update_records.get("metadatas")
-        for item in metadatas:
-            item["is_disabled"] = True
-            item["label"] = ""
-            item["label_id"] = ""
-        self.image_caption_collection.update(
-            ids=ids,
-            metadatas=metadatas
-        )
+        if len(ids) > 0:
+            for item in metadatas:
+                item["is_disabled"] = True
+                item["label"] = ""
+                item["label_id"] = ""
+            self.image_caption_collection.update(
+                ids=ids,
+                metadatas=metadatas
+            )
 
     def modify_state_standard_disease(self, label_id: str, label: str, option: Literal["enable", "disable"] = "enable"):
         """
@@ -239,19 +242,20 @@ class ChromaDBService:
         """
         is_disabled = True if option == "disable" else False
         update_records = self.image_caption_collection.get(
-            where={"label":label, "label_id": label_id},
+            where={"$and": [{"label":label}, {"label_id": label_id}]},
             include=["metadatas"]
         )
         ids = update_records.get("ids")
         metadatas = update_records.get("metadatas")
-        for item in metadatas:
-            item["is_disabled"] = is_disabled
-            item["label"] = ""
-            item["label_id"] = ""
-        self.image_caption_collection.update(
-            ids=ids,
-            metadatas=metadatas
-        )
+        if len(ids) > 0:
+            for item in metadatas:
+                item["is_disabled"] = is_disabled
+                item["label"] = ""
+                item["label_id"] = ""
+            self.image_caption_collection.update(
+                ids=ids,
+                metadatas=metadatas
+            )
 
     def delete_entire_domain(self, domain_id: str):
         """

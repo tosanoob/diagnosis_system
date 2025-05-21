@@ -82,6 +82,25 @@ class DiseaseDomainCrossmap(DiseaseDomainCrossmapBase):
 class DiseaseDomainCrossmapBatchCreate(BaseModel):
     crossmaps: List[DiseaseDomainCrossmapCreate]
 
+class StandardDomainCrossmapBatchUpdate(BaseModel):
+    """Model để tạo batch ánh xạ từ domain STANDARD sang domain khác"""
+    target_domain_id: str
+    crossmaps_lite: List[Dict[str, str]]
+    
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "target_domain_id": "domain-id-1",
+                    "crossmaps_lite": [
+                        {"standard_disease_id": "standard-disease-id-1", "target_disease_id": "target-disease-id-1"},
+                        {"standard_disease_id": "standard-disease-id-2", "target_disease_id": "target-disease-id-2"}
+                    ]
+                }
+            ]
+        }
+    }
+
 # DiagnosisLog models
 class DiagnosisLogBase(BaseModel):
     image_content: Optional[str] = None
