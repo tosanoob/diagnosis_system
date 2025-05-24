@@ -5,7 +5,6 @@ from starlette.responses import RedirectResponse
 import uvicorn
 import argparse
 import os
-from pyngrok import ngrok, conf
 from app.api.routes import router
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
@@ -39,7 +38,7 @@ def create_application() -> FastAPI:
 
 app = create_application()
 
-# Middleware để log request giúp debug vấn đề ngrok
+# Middleware để log request
 @app.middleware("http")
 async def request_logger_middleware(request: Request, call_next):
     # Ghi log thông tin request
@@ -91,34 +90,11 @@ async def startup_event():
     finally:
         db_generator.close()
     
-    # Set up ngrok tunnel if enabled
-    if settings.NGROK_ENABLED:
-        try:
-            # Set authtoken if provided
-            if settings.NGROK_AUTHTOKEN:
-                conf.get_default().auth_token = settings.NGROK_AUTHTOKEN
-                logger.app_info("Ngrok authtoken set")
-            
-            public_url = ngrok.connect(addr=f"{settings.PORT}", bind_tls=True, hostname=settings.NGROK_URL)
-            logger.app_info(f"Ngrok tunnel established at: {public_url}")
-            logger.app_info(f"Tunneling traffic from {public_url} -> localhost:{settings.PORT}")
-            
-        except Exception as e:
-            logger.error(f"Failed to establish ngrok tunnel: {str(e)}")
-    
 @app.on_event("shutdown")
 async def shutdown_event():
     """
     Xử lý các tác vụ khi đóng ứng dụng
     """
-    # Close ngrok tunnels when app shuts down
-    if settings.NGROK_ENABLED:
-        try:
-            ngrok.kill()
-            logger.app_info("Ngrok tunnels closed")
-        except Exception as e:
-            logger.error(f"Error closing ngrok tunnels: {str(e)}")
-            
     logger.app_info(f"Shutting down {settings.APP_NAME}")
 
 if __name__ == "__main__":
@@ -129,12 +105,10 @@ if __name__ == "__main__":
     parser.add_argument("--reload", action="store_true", help="Bật chế độ tự động reload khi code thay đổi")
     parser.add_argument("--workers", type=int, default=settings.WORKERS, help="Số lượng worker processes")
     parser.add_argument("--log-file", type=str, default="logs/app.log", help="File log")
-    parser.add_argument("--enable-ngrok", action="store_true", help="Enable ngrok tunnel")
     
     args = parser.parse_args()
 
-    # Set ngrok enabled flag from command line argument
-    settings.NGROK_ENABLED = args.enable_ngrok or settings.NGROK_ENABLED
+    # Update settings from command line arguments
     settings.PORT = args.port
     settings.HOST = args.host
     

@@ -78,8 +78,8 @@ async def get_image_only_multi_turn_diagnosis(request: ImageOnlyMultiTurnRequest
         if request.chat_history:
             response, chat_history = await get_later_diagnosis_v2(request.chat_history, request.text)
         else:
-            response, chat_history = await get_first_diagnosis_v2(request.image_base64, request.text)
-        return ImageOnlyMultiTurnResponse(response=response, chat_history=chat_history)
+            all_labels, response, chat_history = await get_first_diagnosis_v2(request.image_base64, request.text)
+        return ImageOnlyMultiTurnResponse(labels=all_labels, response=response, chat_history=chat_history)
     except Exception as e:
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Lỗi khi chẩn đoán: {str(e)}")

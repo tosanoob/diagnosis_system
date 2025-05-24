@@ -286,7 +286,6 @@ async def process_images_with_metadata(
             
         for item in batch:
             # Get image from dataset (may have different structures)
-            print(item)
             image = item[image_field]
             filename = item[filename_field]
             label = item[label_field]

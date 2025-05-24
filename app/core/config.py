@@ -18,12 +18,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8123
     RELOAD: bool = False
-    WORKERS: int = 1
-    
-    # Ngrok configuration
-    NGROK_ENABLED: bool = False
-    NGROK_AUTHTOKEN: Optional[str] = None
-    NGROK_URL: Optional[str] = None
+    WORKERS: int = 4
     
     # Đường dẫn thư mục
     CHROMA_DATA_PATH: str = "runtime/chroma_data"

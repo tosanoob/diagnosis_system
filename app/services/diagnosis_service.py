@@ -273,7 +273,7 @@ async def get_diagnosis(
 
 # ---- multi-turn diagnosis from image only ----
 
-async def get_first_diagnosis_v2(image_base64: str, text: str = None) -> Tuple[str, List]:
+async def get_first_diagnosis_v2(image_base64: str, text: str = None) -> Tuple[List, str, List]:
     """Get context from image only"""
     all_labels, label_documents = await image_diagnosis_only_async(image_base64)
     
@@ -305,7 +305,7 @@ async def get_first_diagnosis_v2(image_base64: str, text: str = None) -> Tuple[s
             ]
         }
     ]
-    return response, chat_history
+    return all_labels, response, chat_history
 
 async def get_later_diagnosis_v2(chat_history: List, text: str = None) -> Tuple[str, List]:
     """Get later diagnosis from chat history"""

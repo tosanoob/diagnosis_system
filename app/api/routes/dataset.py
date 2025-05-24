@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body, File, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
 import json
 
@@ -11,6 +11,7 @@ router = APIRouter()
 
 @router.post("/upload", response_model=Dict[str, Any])
 async def upload_dataset(
+    background_tasks: BackgroundTasks,
     dataset_name: str,
     custom_domain_name: Optional[str] = None,
     metadata_file: UploadFile = File(...),
@@ -36,7 +37,7 @@ async def upload_dataset(
         raise HTTPException(status_code=400, detail="Invalid JSON metadata file")
     
     # Process the dataset upload
-    result = await dataset_service.process_dataset_upload(
+    background_tasks.add_task(dataset_service.process_dataset_upload,
         dataset_name=dataset_name,
         metadata=metadata,
         custom_domain_name=custom_domain_name,
@@ -44,7 +45,10 @@ async def upload_dataset(
         user_id=current_user["user_id"]
     )
     
-    return result
+    return {
+        "success": True,
+        "message": "Dataset upload started in background"
+    }
 
 @router.delete("/{domain_name}", response_model=Dict[str, Any])
 async def delete_dataset(

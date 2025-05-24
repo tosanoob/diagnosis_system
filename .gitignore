@@ -1,6 +1,7 @@
 chroma_data/*
 MedImageInsights/*
 .env
+.env.ngrok
 project.tar.gz
 project.zip
 test_image.png

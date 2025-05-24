@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Tuple, TypeVar, Generic
+from typing import List, Dict, Any, Tuple, TypeVar, Generic, Optional
 
 T = TypeVar('T')
 
@@ -22,6 +22,7 @@ class ImageOnlyMultiTurnResponse(BaseModel):
     """
     Response model for image-only multi-turn diagnosis endpoint
     """
+    labels: Optional[List[Tuple[str, float]]] = Field(..., description="The list of labels and their scores")
     response: str = Field(..., description="The response of the diagnosis")
     chat_history: List[Dict] = Field(..., description="The chat history of the conversation, include the new turn")
 
