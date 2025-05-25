@@ -268,13 +268,17 @@ async def process_images_with_metadata(
     if image_field is None:
         raise ValueError("Image field not found in dataset")
 
+    len_dataset = len(images)
+    if len_dataset != len(metadata):
+        min_len = min(len_dataset, len(metadata))
+
     images_with_metadata = [
         {
             **images[i],
             filename_field: metadata[i][filename_field],
             label_field: metadata[i][label_field]
         }
-        for i in range(len(images))
+        for i in range(min_len)
     ]
     
     for i in range(0, len(images_with_metadata), BATCH_SIZE):
