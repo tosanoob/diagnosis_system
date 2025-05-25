@@ -155,4 +155,26 @@ async def batch_update_standard_domain_crossmaps(
         crossmaps_lite=batch_data.crossmaps_lite,
         db=db,
         created_by=current_user["user_id"]
+    )
+
+@router.get("/domains/{domain_id1}/{domain_id2}", response_model=List[Dict[str, Any]])
+async def get_crossmaps_between_domains(
+    domain_id1: str = Path(..., description="ID của domain thứ nhất"),
+    domain_id2: str = Path(..., description="ID của domain thứ hai"),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Lấy danh sách các cặp ánh xạ giữa các bệnh từ 2 domain.
+    Trả về danh sách các ánh xạ với định dạng:
+    - crossmap_id: ID của ánh xạ
+    - source_disease_id: ID bệnh ở domain thứ nhất  
+    - target_disease_id: ID bệnh tương ứng ở domain thứ hai
+    - source_disease_label: Tên bệnh nguồn
+    - target_disease_label: Tên bệnh tương ứng ở domain thứ hai
+    """
+    return await disease_domain_crossmap_service.get_crossmaps_between_domains(
+        domain_id1=domain_id1,
+        domain_id2=domain_id2,
+        db=db
     ) 

@@ -519,4 +519,56 @@ async def batch_update_standard_domain_crossmaps(
         "standard_domain_id": standard_domain_id,
         "standard_domain_name": standard_domain.domain,
         "results": results
-    } 
+    }
+
+async def get_crossmaps_between_domains(
+    domain_id1: str,
+    domain_id2: str,
+    db: Session
+) -> List[Dict[str, Any]]:
+    """Lấy danh sách các ánh xạ giữa hai domain"""
+    # Kiểm tra xem cả hai domain có tồn tại không
+    domain_1 = crud.domain.get(db, id=domain_id1)
+    if not domain_1 or domain_1.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Domain thứ nhất không tồn tại hoặc đã bị xóa")
+        
+    domain_2 = crud.domain.get(db, id=domain_id2)
+    if not domain_2 or domain_2.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Domain thứ hai không tồn tại hoặc đã bị xóa")
+    
+    # Tìm tất cả crossmaps giữa hai domain
+    crossmaps = db.query(crud.disease_domain_crossmap.model).filter(
+        ((crud.disease_domain_crossmap.model.domain_id_1 == domain_id1) & 
+         (crud.disease_domain_crossmap.model.domain_id_2 == domain_id2)) | 
+        ((crud.disease_domain_crossmap.model.domain_id_1 == domain_id2) & 
+         (crud.disease_domain_crossmap.model.domain_id_2 == domain_id1))
+    ).all()
+    
+    result = []
+    for crossmap in crossmaps:
+        # Xác định đâu là source và target dựa trên thứ tự domain_id
+        if crossmap.domain_id_1 == domain_id1:
+            source_disease_id = crossmap.disease_id_1
+            target_disease_id = crossmap.disease_id_2
+            source_domain_id = crossmap.domain_id_1
+            target_domain_id = crossmap.domain_id_2
+        else:
+            source_disease_id = crossmap.disease_id_2
+            target_disease_id = crossmap.disease_id_1
+            source_domain_id = crossmap.domain_id_2
+            target_domain_id = crossmap.domain_id_1
+        
+        # Lấy thông tin disease từ source và target
+        source_disease = crud.disease.get(db, source_disease_id)
+        target_disease = crud.disease.get(db, target_disease_id)
+        
+        if source_disease and target_disease:
+            result.append({
+                "crossmap_id": crossmap.id,
+                "source_disease_id": source_disease_id,
+                "target_disease_id": target_disease_id,
+                "source_disease_label": source_disease.label,
+                "target_disease_label": target_disease.label
+            })
+    
+    return result 

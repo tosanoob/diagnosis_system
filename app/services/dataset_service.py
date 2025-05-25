@@ -271,7 +271,9 @@ async def process_images_with_metadata(
     len_dataset = len(images)
     if len_dataset != len(metadata):
         min_len = min(len_dataset, len(metadata))
-
+    else:
+        min_len = len_dataset
+        
     images_with_metadata = [
         {
             **images[i],
