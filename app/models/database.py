@@ -91,11 +91,65 @@ class StandardDomainCrossmapBatchUpdate(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "target_domain_id": "domain-id-1",
+                    "target_domain_id": "domain-uuid-123",
                     "crossmaps_lite": [
-                        {"standard_disease_id": "standard-disease-id-1", "target_disease_id": "target-disease-id-1"},
-                        {"standard_disease_id": "standard-disease-id-2", "target_disease_id": "target-disease-id-2"}
+                        {
+                            "standard_disease_id": "standard-disease-uuid-1",
+                            "target_disease_id": "target-disease-uuid-1"
+                        },
+                        {
+                            "standard_disease_id": "standard-disease-uuid-2", 
+                            "target_disease_id": "target-disease-uuid-2"
+                        }
                     ]
+                }
+            ]
+        }
+    }
+
+class CrossmapImportRequest(BaseModel):
+    """Model cho request import crossmap từ JSON"""
+    target_domain_name: str
+    mappings: Dict[str, str]  # {"tên bệnh domain đích": "tên bệnh STANDARD"}
+    
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "target_domain_name": "ICD-10",
+                    "mappings": {
+                        "Viêm phổi": "Pneumonia",
+                        "Đau đầu": "Headache",
+                        "Sốt cao": "Fever"
+                    }
+                }
+            ]
+        }
+    }
+
+class CrossmapExportResponse(BaseModel):
+    """Model cho response export crossmap sang JSON"""
+    target_domain_id: str
+    target_domain_name: str
+    standard_domain_id: str
+    standard_domain_name: str
+    mappings: Dict[str, str]  # {"tên bệnh domain đích": "tên bệnh STANDARD"}
+    total_mappings: int
+    
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "target_domain_id": "domain-uuid-123",
+                    "target_domain_name": "ICD-10",
+                    "standard_domain_id": "standard-domain-uuid",
+                    "standard_domain_name": "STANDARD",
+                    "mappings": {
+                        "Viêm phổi": "Pneumonia",
+                        "Đau đầu": "Headache",
+                        "Sốt cao": "Fever"
+                    },
+                    "total_mappings": 3
                 }
             ]
         }

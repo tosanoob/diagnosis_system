@@ -17,7 +17,8 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.db import crud
 from app.models.database import DomainCreate, DiseaseCreate
-from app.services import domain_service, disease_service, image_service
+from app.services import domain_service, disease_service, image_service, disease_domain_crossmap_service
+from app.services.llm_service import gemini_llm_request
 from app.db.chromadb_service import chromadb_instance
 
 # Dataset processing constants
@@ -111,11 +112,22 @@ async def process_dataset_upload(
                 db=db
             )
             
+            # Tự động tạo ánh xạ với domain STANDARD bằng Gemini AI
+            auto_mapping_result = await auto_map_diseases_with_gemini(
+                dataset_name=dataset_name,
+                domain_id=domain_id,
+                domain_name=domain_name,
+                new_diseases=created_diseases,
+                db=db,
+                created_by=user_id
+            )
+            
             return {
                 "success": True,
                 "domain": domain,
                 "diseases_created": len(created_diseases),
                 "images_processed": processed_count,
+                "auto_mapping": auto_mapping_result,
                 "message": f"Successfully uploaded dataset {dataset_name} and created domain {domain_name}"
             }
             
@@ -428,4 +440,156 @@ async def delete_dataset(
         "diseases_deleted": total_diseases,
         "vector_db_records_deleted": vector_db_deleted,
         "message": f"Successfully deleted dataset domain {domain_name}"
-    } 
+    }
+
+async def auto_map_diseases_with_gemini(
+    dataset_name: str,
+    domain_id: str,
+    domain_name: str,
+    new_diseases: List[Dict[str, Any]],
+    db: Session,
+    created_by: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Tự động tạo ánh xạ giữa domain mới và domain STANDARD bằng Gemini AI
+    
+    Args:
+        dataset_name: Tên dataset
+        domain_id: ID của domain mới
+        domain_name: Tên domain mới
+        new_diseases: Danh sách các disease mới tạo
+        db: Database session
+        created_by: Người tạo ánh xạ
+        
+    Returns:
+        Dict[str, Any]: Kết quả auto mapping
+    """
+    try:
+        # Tìm domain STANDARD
+        standard_domain = db.query(crud.domain.model).filter(
+            crud.domain.model.domain.ilike("STANDARD"),
+            crud.domain.model.deleted_at.is_(None)
+        ).first()
+        
+        if not standard_domain:
+            logger.warning("Không tìm thấy domain STANDARD, bỏ qua auto mapping")
+            return {
+                "success": False,
+                "message": "Không tìm thấy domain STANDARD",
+                "mappings_created": 0
+            }
+        
+        # Lấy tất cả diseases trong STANDARD domain
+        standard_diseases = db.query(crud.disease.model).filter(
+            crud.disease.model.domain_id == standard_domain.id,
+            crud.disease.model.deleted_at.is_(None)
+        ).all()
+        
+        if not standard_diseases:
+            logger.warning("Domain STANDARD không có diseases nào")
+            return {
+                "success": False,
+                "message": "Domain STANDARD không có diseases nào",
+                "mappings_created": 0
+            }
+        
+        # Chuẩn bị prompt cho Gemini
+        new_disease_labels = [disease["label"] for disease in new_diseases]
+        standard_disease_labels = [disease.label for disease in standard_diseases]
+        
+        system_prompt = f"""Bạn là một chuyên gia y khoa có chuyên môn về phân loại và ánh xạ các thuật ngữ y tế.
+
+Nhiệm vụ: Tạo ánh xạ giữa các nhãn bệnh từ dataset "{dataset_name}" với các nhãn bệnh chuẩn trong hệ thống.
+
+Nguyên tắc ánh xạ:
+1. Tìm các nhãn bệnh chuẩn có ý nghĩa tương đương hoặc gần nhất với từng nhãn từ dataset mới
+2. Ưu tiên ánh xạ chính xác về mặt y khoa
+3. Nếu không có nhãn chuẩn phù hợp, có thể bỏ qua nhãn đó
+4. Đảm bảo mỗi nhãn từ dataset mới chỉ ánh xạ tới một nhãn chuẩn
+
+Định dạng output: JSON object với key là nhãn từ dataset mới, value là nhãn chuẩn tương ứng.
+Ví dụ: {{"Viêm da": "Dermatitis", "Mụn trứng cá": "Acne"}}
+
+Chỉ trả về JSON object, không cần giải thích thêm."""
+
+        user_prompt = f"""Dataset: {dataset_name}
+Domain mới: {domain_name}
+
+Nhãn bệnh từ dataset mới:
+{chr(10).join(f'- {label}' for label in new_disease_labels)}
+
+Nhãn bệnh chuẩn có sẵn:
+{chr(10).join(f'- {label}' for label in standard_disease_labels)}
+
+Hãy tạo ánh xạ JSON giữa nhãn bệnh từ dataset mới với nhãn bệnh chuẩn phù hợp nhất."""
+
+        # Gọi Gemini API
+        logger.app_info(f"Đang gọi Gemini để tự động ánh xạ diseases cho dataset {dataset_name}")
+        retries = 3
+        for _ in range(retries):
+            gemini_response = gemini_llm_request(
+                system_instruction=system_prompt,
+                user_instruction=user_prompt,
+                model="gemini-1.5-flash",
+                temperature=0.1,
+                max_tokens=5000
+            )
+            
+            # Parse JSON response từ Gemini
+            try:
+                # Làm sạch response để chỉ lấy JSON
+                response_text = gemini_response.strip()
+                if response_text.startswith("```json"):
+                    response_text = response_text[7:-3]
+                elif response_text.startswith("```"):
+                    response_text = response_text[3:-3]
+                logger.app_info(f"Gemini response: {response_text}")
+                mappings = json.loads(response_text)
+                
+                if not isinstance(mappings, dict):
+                    continue
+                else:
+                    break
+                    
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"Lỗi parse JSON từ Gemini response: {str(e)}")
+                logger.error(f"Gemini response: {gemini_response}")
+                mappings = None
+                continue
+            
+        if not isinstance(mappings, dict):
+            return {
+                "success": False,
+                "message": "Lỗi parse JSON từ Gemini response",
+                "gemini_response": gemini_response,
+                "import_result": None,
+                "mappings_created": 0
+            }
+        
+        # Sử dụng service import_crossmaps_from_json để tạo ánh xạ
+        logger.app_info(f"Tạo ánh xạ tự động với {len(mappings)} mappings")
+        import_result = await disease_domain_crossmap_service.import_crossmaps_from_json(
+            target_domain_name=domain_name,
+            mappings=mappings,
+            db=db,
+            created_by=created_by
+        )
+        logger.app_info(f"Import result: {import_result}")
+        
+        return {
+            "success": True,
+            "message": f"Tự động tạo ánh xạ thành công cho dataset {dataset_name}",
+            "gemini_mappings": mappings,
+            "import_result": import_result,
+            "mappings_created": import_result.get("success_count", 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"Lỗi khi tự động ánh xạ diseases với Gemini: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Lỗi khi tự động ánh xạ: {str(e)}",
+            "mappings_created": 0,
+            "gemini_response": None,
+            "import_result": None
+        } 

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.sqlite_service import get_db
 from app.services import disease_domain_crossmap_service
-from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossmapUpdate, DiseaseDomainCrossmapBatchCreate, StandardDomainCrossmapBatchUpdate
+from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossmapUpdate, DiseaseDomainCrossmapBatchCreate, StandardDomainCrossmapBatchUpdate, CrossmapImportRequest, CrossmapExportResponse
 from app.api.routes.auth import get_current_user, get_admin_user
 
 router = APIRouter()
@@ -176,5 +176,39 @@ async def get_crossmaps_between_domains(
     return await disease_domain_crossmap_service.get_crossmaps_between_domains(
         domain_id1=domain_id1,
         domain_id2=domain_id2,
+        db=db
+    )
+
+@router.post("/import", response_model=Dict[str, Any])
+async def import_crossmaps_from_json(
+    import_data: CrossmapImportRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_admin_user)  # Chỉ admin mới được import
+):
+    """
+    Import ánh xạ từ JSON format.
+    Nhận vào tên domain đích và một JSON mapping {'tên bệnh domain đích': 'tên bệnh STANDARD'}.
+    Sử dụng fuzzy matching để tìm tên bệnh chính xác và xóa sạch ánh xạ cũ trước khi tạo mới.
+    """
+    return await disease_domain_crossmap_service.import_crossmaps_from_json(
+        target_domain_name=import_data.target_domain_name,
+        mappings=import_data.mappings,
+        db=db,
+        created_by=current_user["user_id"]
+    )
+
+@router.get("/export/{domain_id}", response_model=CrossmapExportResponse)
+async def export_crossmaps_to_json(
+    domain_id: str = Path(..., description="ID của domain cần export"),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Export ánh xạ sang JSON format.
+    Trả về danh sách ánh xạ theo tên các bệnh từ domain đích đến domain STANDARD
+    dưới dạng JSON object {'tên bệnh domain đích': 'tên bệnh domain STANDARD'}.
+    """
+    return await disease_domain_crossmap_service.export_crossmaps_to_json(
+        target_domain_id=domain_id,
         db=db
     ) 

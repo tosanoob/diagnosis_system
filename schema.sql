@@ -107,14 +107,6 @@ CREATE TABLE clinics (
   website TEXT
 );
 
-CREATE TABLE reports (
-  id TEXT PRIMARY KEY,
-  created_at TIMESTAMP,
-  deleted_at TIMESTAMP,
-  title TEXT,
-  description TEXT
-);
-
 CREATE TABLE images (
     id TEXT PRIMARY KEY,
     base_url TEXT,

@@ -1,8 +1,13 @@
 import json
 import os
 import numpy as np
-labels = json.load(open('labels.json', 'r', encoding='utf-8'))
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from app.db import crud
+from app.db.sqlite_service import get_db
 
+# Deprecated - will be removed
+labels = json.load(open('labels.json', 'r', encoding='utf-8'))
 labels_to_folder = labels['disease_document_path']
 
 def count_disease_scores(relation_list):
@@ -299,24 +304,109 @@ def sort_document_results(document_results, method='weighted', top_k=3):
     else:
         return sorted_label_score
 
-def get_document(disease_name):
-    document_path = None
-    print("Finding document for disease: ", disease_name)
-    if disease_name == 'PEMPHIGUS':
-        document_path = labels_to_folder['PEMPHIGUS']
-    else:
-        for item in labels_to_folder:
-            if disease_name in item:
-                document_path = labels_to_folder[item]
-                break
-    documents_files = os.listdir(document_path)
-    documents_files = sorted(documents_files, key=lambda x: int(x.replace('.json','').split('_')[-1]))
-    documents = []
-    for d in documents_files:
-        documents.append(
-            json.load(open(os.path.join(document_path, d), 'r', encoding='utf-8'))['content']
-        )
-    return documents
+def get_document(disease_name: str, db: Optional[Session] = None) -> List[str]:
+    """
+    Lấy description của bệnh từ database domain STANDARD
+    
+    Args:
+        disease_name: Tên bệnh cần tìm
+        db: Database session (optional)
+        
+    Returns:
+        List[str]: Danh sách descriptions của bệnh (nếu có nhiều match)
+    """
+    # print(f"Finding document for disease from DB: {disease_name}")
+    
+    # Tạo database session nếu chưa có
+    if db is None:
+        db = next(get_db())
+    
+    try:
+        # Tìm domain STANDARD
+        standard_domain = db.query(crud.domain.model).filter(
+            crud.domain.model.domain.ilike("STANDARD"),
+            crud.domain.model.deleted_at.is_(None)
+        ).first()
+        
+        if not standard_domain:
+            print("Không tìm thấy domain STANDARD")
+            return []
+        
+        # Tìm diseases với tên tương ứng trong domain STANDARD
+        diseases = db.query(crud.disease.model).filter(
+            crud.disease.model.domain_id == standard_domain.id,
+            crud.disease.model.deleted_at.is_(None)
+        ).all()
+        
+        # Tìm exact match hoặc partial match
+        matching_diseases = []
+        
+        # Thử exact match trước (case insensitive)
+        for disease in diseases:
+            if disease.label.lower() == disease_name.lower():
+                matching_diseases.append(disease)
+        
+        # Nếu không có exact match, thử partial match
+        if not matching_diseases:
+            for disease in diseases:
+                if disease_name.lower() in disease.label.lower() or disease.label.lower() in disease_name.lower():
+                    matching_diseases.append(disease)
+        
+        # Lấy descriptions
+        documents = []
+        for disease in matching_diseases:
+            if disease.description and disease.description.strip():
+                documents.append(disease.description)
+                # print(f"Found disease: {disease.label} with description length: {len(disease.description)}")
+            else:
+                # Nếu không có description, sử dụng tên bệnh làm placeholder
+                documents.append(f"Thông tin về bệnh {disease.label}")
+                # print(f"Found disease: {disease.label} but no description available")
+        
+        if not documents:
+            print(f"Không tìm thấy bệnh '{disease_name}' trong domain STANDARD")
+            # Fallback: trả về thông tin cơ bản
+            return [f"Không tìm thấy thông tin chi tiết về bệnh {disease_name}"]
+        
+        return documents
+        
+    except Exception as e:
+        print(f"Lỗi khi lấy document từ database: {str(e)}")
+        # Fallback to old logic if database fails
+        return get_document_legacy(disease_name)
+    finally:
+        if db:
+            db.close()
+
+def get_document_legacy(disease_name: str) -> List[str]:
+    """
+    Legacy function để lấy document từ file (backup)
+    """
+    try:
+        document_path = None
+        # print("Finding document for disease (legacy): ", disease_name)
+        if disease_name == 'PEMPHIGUS':
+            document_path = labels_to_folder['PEMPHIGUS']
+        else:
+            for item in labels_to_folder:
+                if disease_name in item:
+                    document_path = labels_to_folder[item]
+                    break
+        
+        if not document_path or not os.path.exists(document_path):
+            return [f"Không tìm thấy thông tin về bệnh {disease_name}"]
+            
+        documents_files = os.listdir(document_path)
+        documents_files = sorted(documents_files, key=lambda x: int(x.replace('.json','').split('_')[-1]))
+        documents = []
+        for d in documents_files:
+            documents.append(
+                json.load(open(os.path.join(document_path, d), 'r', encoding='utf-8'))['content']
+            )
+        return documents
+    except Exception as e:
+        print(f"Lỗi trong legacy function: {str(e)}")
+        return [f"Không tìm thấy thông tin về bệnh {disease_name}"]
 
 def softmax(scores):
     exp_scores = [np.exp(score) for score in scores]

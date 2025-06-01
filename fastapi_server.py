@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 import logging
+import argparse
 
 # Import the distilled model
 from runtime.trained_model.distilled_model import DistilledModel
@@ -33,19 +34,25 @@ app = FastAPI(title="Image Encoding API", version="1.0.0")
 model = None
 device = None
 transform = None
+model_dir = None
 
-def load_model():
+def load_model(model_directory: str):
     """Load the distilled model from checkpoint."""
     global model, device, transform
     
-    model_dir = "/home/cuong/workdir/src/chatbot-agentic/query_system/runtime/trained_model/embedding_distillation_20250518_125113"
+    if not os.path.exists(model_directory):
+        raise FileNotFoundError(f"Model directory không tồn tại: {model_directory}")
     
     # Load model config
-    config_path = os.path.join(model_dir, "model_config.json")
+    config_path = os.path.join(model_directory, "model_config.json")
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Model config không tồn tại: {config_path}")
+        
     with open(config_path, 'r') as f:
         config = json.load(f)
     
-    logger.info(f"Loading model with config: {config}")
+    logger.info(f"Loading model from: {model_directory}")
+    logger.info(f"Model config: {config}")
     
     # Determine device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -60,7 +67,10 @@ def load_model():
     )
     
     # Load model weights
-    checkpoint_path = os.path.join(model_dir, "best_model.pt")
+    checkpoint_path = os.path.join(model_directory, "best_model.pt")
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Model checkpoint không tồn tại: {checkpoint_path}")
+        
     checkpoint = torch.load(checkpoint_path, map_location=device)
     
     # Load state dict
@@ -107,7 +117,7 @@ def preprocess_image(image: Image.Image) -> torch.Tensor:
 @app.on_event("startup")
 async def startup_event():
     """Load model on startup."""
-    load_model()
+    load_model(model_dir)
 
 @app.get("/")
 async def root():
@@ -171,5 +181,36 @@ async def encode_images(request: EncodeRequest):
         logger.error(f"Error during encoding: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="FastAPI server for image encoding using distilled model")
+    
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        default="/home/cuong/workdir/src/chatbot-agentic/query_system/runtime/trained_model/embedding_distillation_20250518_125113",
+        help="Đường dẫn tới thư mục chứa model đã train (default: %(default)s)"
+    )
+    
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="0.0.0.0",
+        help="Host để bind server (default: %(default)s)"
+    )
+    
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8126,
+        help="Port để bind server (default: %(default)s)"
+    )
+    
+    return parser.parse_args()
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8126) 
+    args = parse_args()
+    model_dir = args.model_dir
+    
+    logger.info(f"Khởi chạy server với model_dir: {model_dir}")
+    uvicorn.run(app, host=args.host, port=args.port) 

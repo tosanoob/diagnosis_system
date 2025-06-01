@@ -123,13 +123,15 @@ class ChromaDBService:
 
     def retrieve_image_info(self, image_base64: str | list[str],
                             n_results: int = 5,
-                            threshold: float = 0.5) -> dict:
+                            threshold: float = 0.5,
+                            filter_labels: str |list[str] = None) -> dict:
         """
         Hàm tìm ảnh gần nhất với hình ảnh gửi, trả về hình ảnh tương tự, thông tin hình ảnh.
         Args:
             image_base64: Hình ảnh được mã hóa dưới dạng base64
             n_results: Số kết quả trả về
             threshold: Ngưỡng độ tương đồng
+            filter_labels: Danh sách các label cần lọc, nếu None sẽ lấy ra tất cả
         Returns:
             dict: Top n ảnh tương tự với ngưỡng distance
         """
@@ -144,11 +146,26 @@ class ChromaDBService:
                 logger.error("Failed to encode images")
                 return []
                 
+            condition = {"is_disabled": False}
+            if filter_labels:
+                if isinstance(filter_labels, str):
+                    filter_labels = [filter_labels]
+                if len(filter_labels) == 1:
+                    condition = {"$and": [
+                        {"is_disabled": False},
+                        {"label": filter_labels[0]}
+                    ]}
+                else:
+                    condition = {"$and": [
+                        {"is_disabled": False},
+                        {"$or": [{"label": label} for label in filter_labels]}
+                    ]}
+                    
             # Truy vấn ChromaDB với embeddings
             query_results = self.image_caption_collection.query(
                 query_embeddings=embeddings,
                 n_results=n_results,
-                where={"is_disabled": False}
+                where=condition
             )
                 
             # Xử lý kết quả

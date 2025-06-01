@@ -3,8 +3,18 @@ Service layer cho chẩn đoán và phân tích dữ liệu y khoa
 """
 from typing import List, Dict, Tuple, Optional, Any, Union
 import asyncio
+import sys
+import itertools
+from concurrent.futures import ThreadPoolExecutor
+
+# Third-party imports
+from rapidfuzz import process, fuzz
+
+# App imports
 from app.db.chromadb_service import chromadb_instance
 from app.db.neo4j_service import neo4j_instance
+from app.db.sqlite_service import get_db
+from app.db import crud
 from app.services.llm_service import (
     extract_keywords, 
     get_image_caption, 
@@ -14,6 +24,7 @@ from app.services.llm_service import (
     get_gemini_config,
     general_gemini_request
 )
+from app.services.disease_domain_crossmap_service import normalize_disease_name
 from app.constants.enums import EntityType
 from app.models.domain import ReasoningPrompt
 from app.core.utils import (
@@ -23,7 +34,8 @@ from app.core.utils import (
     sort_document_results,
     get_document,
     softmax,
-    format_context
+    format_context,
+    labels_to_folder
 )
 from app.core.logging import logger
 
@@ -113,32 +125,27 @@ async def prepare_results_async(image_labels: List, query_labels: List, document
 
     # Hàm chuẩn hóa điểm số
     def normalize_scores(labels_with_scores):
+        # Normalize scores to 0-1 range for comparison across different methods
         if not labels_with_scores:
             return []
-        
-        # Tìm giá trị min và max trong danh sách điểm
         scores = [score for _, score in labels_with_scores]
-        min_score = min(scores)
-        max_score = max(scores)
-        
-        # Tránh chia cho 0 nếu min_score = max_score
-        if max_score == min_score:
-            return [(label, 0.0) for label, _ in labels_with_scores]
-        
-        # Chuẩn hóa điểm số về phạm vi (0,1)
-        # Lưu ý: Điểm thấp hơn thường tốt hơn trong hệ thống này, nên chúng ta đảo ngược thang điểm
-        normalized_labels = [(label, 1 - ((score - min_score) / (max_score - min_score))) 
-                            for label, score in labels_with_scores]
-        
-        return normalized_labels
+        min_score, max_score = min(scores), max(scores)
+        score_range = max_score - min_score if max_score != min_score else 1
+        return [(label, (score - min_score) / score_range) for label, score in labels_with_scores]
 
-    neo4j_labels = normalize_scores(query_labels + disease_labels)
-    chroma_labels = normalize_scores(document_labels)
-    image_labels = normalize_scores(image_labels)
-    all_labels = neo4j_labels + chroma_labels + image_labels
-    top_5_labels, top_5_labels_score = await get_top_labels_async(all_labels, reverse=True)
-    label_documents = [get_document(label) for label in top_5_labels]
-    return list(zip(top_5_labels, top_5_labels_score)), label_documents
+    # Get database session for get_document calls
+    db = next(get_db())
+    
+    try:
+        neo4j_labels = normalize_scores(query_labels + disease_labels)
+        chroma_labels = normalize_scores(document_labels)
+        image_labels = normalize_scores(image_labels)
+        all_labels = neo4j_labels + chroma_labels + image_labels
+        top_5_labels, top_5_labels_score = await get_top_labels_async(all_labels, reverse=True)
+        label_documents = [get_document(label, db) for label in top_5_labels]
+        return list(zip(top_5_labels, top_5_labels_score)), label_documents
+    finally:
+        db.close()
 
 async def image_diagnosis_only_async(image_base64: str) -> Tuple[List, List]:
     """Async version of image diagnosis with concurrent tasks"""
@@ -205,9 +212,14 @@ async def fusion_diagnosis_async(image_base64: str, text: str) -> Tuple[List, Li
     # Combine results
     all_labels = image_labels + text_labels
     top_5_labels, top_5_labels_score = await get_top_labels_async(all_labels, reverse=False)
-    label_documents = [get_document(label) for label in top_5_labels]
     
-    return list(zip(top_5_labels, top_5_labels_score)), label_documents
+    # Get database session for get_document calls
+    db = next(get_db())
+    try:
+        label_documents = [get_document(label, db) for label in top_5_labels]
+        return list(zip(top_5_labels, top_5_labels_score)), label_documents
+    finally:
+        db.close()
 
 # Public API
 async def get_context(
@@ -333,3 +345,279 @@ async def get_later_diagnosis_v2(chat_history: List, text: str = None) -> Tuple[
     })
     return response, chat_history
 
+# ----------------- v3 -------------------
+
+async def get_images_with_filter(image_base64: str, filter_labels: List[str]) -> Tuple[List, str, List]:
+    """Get images with filter labels"""
+    image_labels = chromadb_instance.retrieve_image_info(image_base64, n_results=15, filter_labels=filter_labels)
+    image_labels = sort_image_results(image_labels, top_k=15)
+    # image_labels = [(item[0][:item[0].find('(')].strip(), item[1]) for item in image_labels]
+    return await prepare_results_async(image_labels, [], [], [])
+
+async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> Tuple[List, str, List]:
+    """Get first stage diagnosis from image only"""
+    # Get database session for both querying diseases and getting documents
+    db = next(get_db())
+    try:
+        # Query tất cả bệnh trong domain STANDARD từ database
+        standard_domain = db.query(crud.domain.model).filter(
+            crud.domain.model.domain.ilike("STANDARD"),
+            crud.domain.model.deleted_at.is_(None)
+        ).first()
+        
+        if not standard_domain:
+            logger.app_info("Không tìm thấy domain STANDARD, fallback to static labels")
+            all_labels = list(labels_to_folder.keys())
+        else:
+            # Lấy tất cả bệnh trong domain STANDARD
+            diseases = db.query(crud.disease.model).filter(
+                crud.disease.model.domain_id == standard_domain.id,
+                crud.disease.model.deleted_at.is_(None),
+                crud.disease.model.included_in_diagnosis.is_(True)
+            ).all()
+            
+            all_labels = [disease.label for disease in diseases]
+            logger.app_info(f"Found {len(all_labels)} diseases in STANDARD domain")
+
+        label_documents = [get_document(label, db) for label in all_labels]
+        reasoning_prompt = ReasoningPrompt.format_prompt_v3(text, True, format_context(all_labels, label_documents))
+    finally:
+        db.close()
+        
+    response = generate_with_image(image_base64, ReasoningPrompt.IMAGE_ONLY_SYSTEM_PROMPT, reasoning_prompt, max_tokens=10000)
+    
+    # Extract diagnoses from response text
+    llm_labels = []
+    start_tag = "<diagnosis>"
+    end_tag = "</diagnosis>"
+    
+    start_idx = 0
+    while True:
+        start_idx = response.find(start_tag, start_idx)
+        if start_idx == -1:
+            break
+            
+        start_idx += len(start_tag)
+        end_idx = response.find(end_tag, start_idx)
+        if end_idx == -1:
+            break
+            
+        diagnosis = response[start_idx:end_idx].strip()
+        llm_labels.append(diagnosis)
+        start_idx = end_idx + len(end_tag)
+
+    print(f"LLM response: {response}")
+    print(f"LLM labels: {llm_labels}")
+
+    # Áp dụng improved fuzzy matching với multiple strategies
+    matched_labels = []
+    for llm_label in llm_labels:
+        # Sử dụng improved matching với min_score = 60 (thấp hơn để có nhiều kết quả hơn)
+        best_match = find_best_label_match(
+            llm_label,
+            all_labels,
+            min_score=60
+        )
+        
+        if best_match:
+            matched_label, score = best_match
+            matched_labels.append(matched_label)
+            logger.app_info(f"Matched '{llm_label}' to '{matched_label}' with score {score}")
+        else:
+            logger.app_info(f"No good match found for '{llm_label}'")
+            
+    # Loại bỏ các label trùng lặp
+    llm_labels = list(set(matched_labels))
+
+    all_labels, label_documents = await get_images_with_filter(image_base64, llm_labels)
+    reasoning_prompt = ReasoningPrompt.format_prompt_analyze_diagnosis_v3(text, True, format_context(all_labels, label_documents))
+    response = generate_with_image(image_base64, ReasoningPrompt.IMAGE_ONLY_SYSTEM_PROMPT, reasoning_prompt, max_tokens=10000)
+
+    chat_history = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": reasoning_prompt
+                } if text else None,
+                {
+                    "type": "image",
+                    "image": image_base64,
+                    "mime_type": "image/jpeg"
+                }
+            ]
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": response
+                }
+            ]
+        }
+    ]
+    
+    return all_labels, response, chat_history
+
+async def get_second_stage_diagnosis_v3(chat_history: List, text: str = None) -> Tuple[str, List]:
+    """Get later diagnosis from chat history"""
+    reasoning_prompt = text
+    chat_history.append({
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": reasoning_prompt
+            }
+        ]
+    })
+    gemini_history = openai_to_gemini_history(chat_history)
+    
+    response = general_gemini_request(contents=gemini_history, config=get_gemini_config())
+    chat_history.append({
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": response    
+            }
+        ]
+    })
+    return response, chat_history
+
+def find_best_label_match(
+    query_name: str,
+    all_labels: List[str],
+    min_score: int = 60
+) -> Optional[tuple]:
+    """
+    Tìm label match tốt nhất với improved fuzzy matching
+    
+    Args:
+        query_name: Tên bệnh cần tìm
+        all_labels: Danh sách labels chuẩn
+        min_score: Điểm tối thiểu để accept match
+        
+    Returns:
+        tuple: (matched_label, score) hoặc None
+    """
+    if not query_name or not all_labels:
+        return None
+    
+    # Normalize query
+    normalized_query = normalize_disease_name(query_name)
+    logger.app_info(f"Tìm match cho: '{query_name}' -> normalized: '{normalized_query}'")
+    
+    # Tạo mapping từ normalized labels tới original labels
+    label_mapping = {}
+    normalized_labels = []
+    
+    # Tạo thêm mapping cho nội dung trong ngoặc đơn (tên tiếng Anh)
+    english_mapping = {}
+    english_terms = []
+    
+    import re
+    for label in all_labels:
+        normalized_label = normalize_disease_name(label)
+        normalized_labels.append(normalized_label)
+        label_mapping[normalized_label] = label
+        
+        # Extract nội dung trong ngoặc đơn để matching riêng
+        parentheses_content = re.findall(r'\(([^)]*)\)', label)
+        for content in parentheses_content:
+            # Chuẩn hóa nội dung trong ngoặc
+            normalized_content = content.lower().strip()
+            # Tách các từ nếu có dấu phẩy hoặc dấu gạch ngang
+            terms = re.split(r'[,-]', normalized_content)
+            for term in terms:
+                clean_term = term.strip()
+                if clean_term and len(clean_term) > 2:  # Chỉ lấy term có độ dài > 2
+                    english_terms.append(clean_term)
+                    english_mapping[clean_term] = label
+    
+    # Log một vài ví dụ normalized labels để debug
+    logger.app_info(f"Một vài normalized labels: {normalized_labels[:5]}")
+    logger.app_info(f"English terms extracted: {english_terms[:10]}")
+    
+    # Thử multiple fuzzy matching strategies
+    best_match = None
+    best_score = 0
+    
+    # Strategy 1: fuzz.ratio với normalized text
+    match1 = process.extractOne(
+        normalized_query,
+        normalized_labels,
+        scorer=fuzz.ratio,
+        score_cutoff=min_score
+    )
+    
+    if match1 and match1[1] > best_score:
+        best_match = match1
+        best_score = match1[1]
+        logger.app_info(f"fuzz.ratio match: '{match1[0]}' với score {match1[1]}")
+    
+    # Strategy 2: fuzz.partial_ratio với normalized text  
+    match2 = process.extractOne(
+        normalized_query,
+        normalized_labels,
+        scorer=fuzz.partial_ratio,
+        score_cutoff=min_score
+    )
+    
+    if match2 and match2[1] > best_score:
+        best_match = match2
+        best_score = match2[1]
+        logger.app_info(f"fuzz.partial_ratio match: '{match2[0]}' với score {match2[1]}")
+    
+    # Strategy 3: fuzz.token_sort_ratio với normalized text
+    match3 = process.extractOne(
+        normalized_query,
+        normalized_labels,
+        scorer=fuzz.token_sort_ratio,
+        score_cutoff=min_score
+    )
+    
+    if match3 and match3[1] > best_score:
+        best_match = match3
+        best_score = match3[1]
+        logger.app_info(f"fuzz.token_sort_ratio match: '{match3[0]}' với score {match3[1]}")
+    
+    # Strategy 4: Exact match với original text (case insensitive)
+    for label in all_labels:
+        if query_name.lower() == label.lower():
+            logger.app_info(f"Exact match tìm thấy: '{label}' cho query '{query_name}'")
+            return (label, 100.0)
+    
+    # Strategy 5: Fuzzy match với English terms trong ngoặc đơn
+    if english_terms:
+        query_lower = query_name.lower().strip()
+        
+        # Thử exact match với English terms trước
+        for term in english_terms:
+            if query_lower == term:
+                matched_label = english_mapping[term]
+                logger.app_info(f"English exact match: '{query_name}' -> '{matched_label}' với score 100.0")
+                return (matched_label, 100.0)
+        
+        # Thử fuzzy match với English terms
+        english_match = process.extractOne(
+            query_lower,
+            english_terms,
+            scorer=fuzz.ratio,
+            score_cutoff=min_score
+        )
+        
+        if english_match and english_match[1] > best_score:
+            matched_label = english_mapping[english_match[0]]
+            logger.app_info(f"English fuzzy match: '{query_name}' -> '{matched_label}' với score {english_match[1]}")
+            return (matched_label, english_match[1])
+    
+    if best_match:
+        matched_label = label_mapping[best_match[0]]
+        logger.app_info(f"Best match cuối cùng: '{matched_label}' với score {best_match[1]}")
+        return (matched_label, best_match[1])
+    
+    logger.app_info(f"Không tìm thấy match nào cho '{query_name}' với min_score={min_score}")
+    return None

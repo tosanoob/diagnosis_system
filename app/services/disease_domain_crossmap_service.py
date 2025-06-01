@@ -4,6 +4,7 @@ Service xử lý logic cho ánh xạ giữa các bệnh thuộc các domain khá
 from typing import List, Dict, Any, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from rapidfuzz import fuzz, process
 
 from app.db import crud
 from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossmapUpdate
@@ -571,4 +572,382 @@ async def get_crossmaps_between_domains(
                 "target_disease_label": target_disease.label
             })
     
-    return result 
+    return result
+
+def normalize_disease_name(name: str) -> str:
+    """
+    Chuẩn hóa tên bệnh để cải thiện fuzzy matching
+    
+    Args:
+        name: Tên bệnh gốc
+        
+    Returns:
+        str: Tên bệnh đã được chuẩn hóa
+    """
+    if not name:
+        return ""
+    
+    # Chuyển về chữ thường
+    normalized = name.lower()
+    
+    # Loại bỏ nội dung trong ngoặc đơn và ngoặc vuông
+    import re
+    normalized = re.sub(r'\([^)]*\)', '', normalized)
+    normalized = re.sub(r'\[[^\]]*\]', '', normalized)
+    
+    # Loại bỏ dấu câu và ký tự đặc biệt không cần thiết
+    normalized = re.sub(r'[^\w\sáàảãạâấầẩẫậăắằẳẵặéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]', ' ', normalized)
+    
+    # Loại bỏ khoảng trắng thừa
+    normalized = ' '.join(normalized.split())
+    
+    return normalized.strip()
+
+def find_best_disease_match(
+    query_name: str,
+    disease_labels: List[str],
+    diseases: List,
+    min_score: int = 60
+) -> Optional[tuple]:
+    """
+    Tìm disease match tốt nhất với improved fuzzy matching
+    
+    Args:
+        query_name: Tên bệnh cần tìm
+        disease_labels: Danh sách label diseases
+        diseases: Danh sách disease objects
+        min_score: Điểm tối thiểu để accept match
+        
+    Returns:
+        tuple: (matched_disease_object, matched_label, score) hoặc None
+    """
+    if not query_name or not disease_labels:
+        return None
+    
+    # Normalize query
+    normalized_query = normalize_disease_name(query_name)
+    logger.app_info(f"Tìm match cho: '{query_name}' -> normalized: '{normalized_query}'")
+    
+    # Tạo mapping từ normalized labels tới original labels và diseases
+    label_mapping = {}
+    normalized_labels = []
+    
+    for i, label in enumerate(disease_labels):
+        normalized_label = normalize_disease_name(label)
+        normalized_labels.append(normalized_label)
+        label_mapping[normalized_label] = {
+            "original_label": label,
+            "disease": diseases[i]
+        }
+    
+    # Log một vài ví dụ normalized labels để debug
+    logger.app_info(f"Một vài normalized labels: {normalized_labels[:5]}")
+    
+    # Thử multiple fuzzy matching strategies
+    best_match = None
+    best_score = 0
+    
+    # Strategy 1: fuzz.ratio với normalized text
+    match1 = process.extractOne(
+        normalized_query,
+        normalized_labels,
+        scorer=fuzz.ratio,
+        score_cutoff=min_score
+    )
+    
+    if match1 and match1[1] > best_score:
+        best_match = match1
+        best_score = match1[1]
+        logger.app_info(f"fuzz.ratio match: '{match1[0]}' với score {match1[1]}")
+    
+    # Strategy 2: fuzz.partial_ratio với normalized text  
+    match2 = process.extractOne(
+        normalized_query,
+        normalized_labels,
+        scorer=fuzz.partial_ratio,
+        score_cutoff=min_score
+    )
+    
+    if match2 and match2[1] > best_score:
+        best_match = match2
+        best_score = match2[1]
+        logger.app_info(f"fuzz.partial_ratio match: '{match2[0]}' với score {match2[1]}")
+    
+    # Strategy 3: fuzz.token_sort_ratio với normalized text
+    match3 = process.extractOne(
+        normalized_query,
+        normalized_labels,
+        scorer=fuzz.token_sort_ratio,
+        score_cutoff=min_score
+    )
+    
+    if match3 and match3[1] > best_score:
+        best_match = match3
+        best_score = match3[1]
+        logger.app_info(f"fuzz.token_sort_ratio match: '{match3[0]}' với score {match3[1]}")
+    
+    # Strategy 4: Exact match với original text (case insensitive)
+    for label in disease_labels:
+        if query_name.lower() == label.lower():
+            matched_normalized = normalize_disease_name(label)
+            logger.app_info(f"Exact match tìm thấy: '{label}' cho query '{query_name}'")
+            return (
+                label_mapping[matched_normalized]["disease"],
+                label_mapping[matched_normalized]["original_label"],
+                100.0
+            )
+    
+    if best_match:
+        matched_info = label_mapping[best_match[0]]
+        logger.app_info(f"Best match cuối cùng: '{matched_info['original_label']}' với score {best_match[1]}")
+        return (
+            matched_info["disease"],
+            matched_info["original_label"],
+            best_match[1]
+        )
+    
+    logger.app_info(f"Không tìm thấy match nào cho '{query_name}' với min_score={min_score}")
+    return None
+
+async def import_crossmaps_from_json(
+    target_domain_name: str,
+    mappings: Dict[str, str],
+    db: Session,
+    created_by: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Import ánh xạ từ JSON format với fuzzy matching
+    
+    Args:
+        target_domain_name: Tên domain đích
+        mappings: Dict {"tên bệnh domain đích": "tên bệnh STANDARD"}
+        db: Database session
+        created_by: Người tạo ánh xạ
+        
+    Returns:
+        Dict[str, Any]: Kết quả import
+    """
+    # Tìm domain đích theo tên (fuzzy matching)
+    all_domains = db.query(crud.domain.model).filter(
+        crud.domain.model.deleted_at.is_(None)
+    ).all()
+    
+    domain_names = [domain.domain for domain in all_domains]
+    target_domain_match = process.extractOne(
+        target_domain_name, 
+        domain_names, 
+        scorer=fuzz.ratio,
+        score_cutoff=80
+    )
+    
+    if not target_domain_match:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Không tìm thấy domain khớp với tên '{target_domain_name}'"
+        )
+    
+    # Lấy domain đích
+    target_domain = next(d for d in all_domains if d.domain == target_domain_match[0])
+    
+    # Tìm domain STANDARD
+    standard_domain = db.query(crud.domain.model).filter(
+        crud.domain.model.domain.ilike("STANDARD"),
+        crud.domain.model.deleted_at.is_(None)
+    ).first()
+    
+    if not standard_domain:
+        raise HTTPException(status_code=404, detail="Không tìm thấy domain STANDARD")
+    
+    # Lấy tất cả diseases trong target domain và standard domain
+    target_diseases = db.query(crud.disease.model).filter(
+        crud.disease.model.domain_id == target_domain.id,
+        crud.disease.model.deleted_at.is_(None)
+    ).all()
+    
+    standard_diseases = db.query(crud.disease.model).filter(
+        crud.disease.model.domain_id == standard_domain.id,
+        crud.disease.model.deleted_at.is_(None)
+    ).all()
+    
+    target_disease_labels = [disease.label for disease in target_diseases]
+    standard_disease_labels = [disease.label for disease in standard_diseases]
+    
+    # Debug: Log danh sách diseases trong STANDARD domain
+    logger.app_info(f"STANDARD domain có {len(standard_diseases)} diseases:")
+    for label in standard_disease_labels[:10]:  # Log 10 diseases đầu tiên để debug
+        logger.app_info(f"  - {label}")
+    if len(standard_disease_labels) > 10:
+        logger.app_info(f"  ... và {len(standard_disease_labels) - 10} diseases khác")
+    
+    # Xóa tất cả ánh xạ cũ giữa target domain và standard domain
+    existing_crossmaps = db.query(crud.disease_domain_crossmap.model).filter(
+        ((crud.disease_domain_crossmap.model.domain_id_1 == target_domain.id) & 
+         (crud.disease_domain_crossmap.model.domain_id_2 == standard_domain.id)) | 
+        ((crud.disease_domain_crossmap.model.domain_id_1 == standard_domain.id) & 
+         (crud.disease_domain_crossmap.model.domain_id_2 == target_domain.id))
+    ).all()
+    
+    for crossmap in existing_crossmaps:
+        db.delete(crossmap)
+    db.commit()
+    
+    # Xử lý từng mapping
+    results = {
+        "success": [],
+        "failed": []
+    }
+    
+    for target_disease_name, standard_disease_name in mappings.items():
+        try:
+            # Sử dụng improved fuzzy matching cho target disease
+            target_match_result = find_best_disease_match(
+                query_name=target_disease_name,
+                disease_labels=target_disease_labels,
+                diseases=target_diseases,
+                min_score=60
+            )
+            
+            if not target_match_result:
+                results["failed"].append({
+                    "target_disease_name": target_disease_name,
+                    "standard_disease_name": standard_disease_name,
+                    "error": f"Không tìm thấy bệnh khớp với '{target_disease_name}' trong domain đích"
+                })
+                continue
+            
+            target_disease, target_matched_label, target_score = target_match_result
+            
+            # Sử dụng improved fuzzy matching cho standard disease
+            standard_match_result = find_best_disease_match(
+                query_name=standard_disease_name,
+                disease_labels=standard_disease_labels,
+                diseases=standard_diseases,
+                min_score=60
+            )
+            
+            if not standard_match_result:
+                results["failed"].append({
+                    "target_disease_name": target_disease_name,
+                    "standard_disease_name": standard_disease_name,
+                    "error": f"Không tìm thấy bệnh khớp với '{standard_disease_name}' trong domain STANDARD"
+                })
+                continue
+            
+            standard_disease, standard_matched_label, standard_score = standard_match_result
+            
+            # Tạo crossmap mới
+            crossmap_data = DiseaseDomainCrossmapCreate(
+                disease_id_1=standard_disease.id,
+                domain_id_1=standard_domain.id,
+                disease_id_2=target_disease.id,
+                domain_id_2=target_domain.id
+            )
+            
+            new_crossmap = crud.disease_domain_crossmap.create(db, obj_in=crossmap_data)
+            
+            # Tạo ánh xạ trong ChromaDB
+            try:
+                chromadb_instance.create_mapping(
+                    domain_id=target_domain.id,
+                    domain_disease_id=target_disease.id,
+                    label_id=standard_disease.id,
+                    label=standard_disease.label
+                )
+            except Exception as e:
+                logger.error(f"Lỗi khi tạo ánh xạ trong ChromaDB: {str(e)}")
+            
+            results["success"].append({
+                "id": new_crossmap.id,
+                "target_disease_name": target_disease_name,
+                "target_disease_matched": target_matched_label,
+                "target_disease_id": target_disease.id,
+                "standard_disease_name": standard_disease_name,
+                "standard_disease_matched": standard_matched_label,
+                "standard_disease_id": standard_disease.id,
+                "target_match_score": target_score,
+                "standard_match_score": standard_score
+            })
+            
+        except Exception as e:
+            results["failed"].append({
+                "target_disease_name": target_disease_name,
+                "standard_disease_name": standard_disease_name,
+                "error": str(e)
+            })
+    
+    return {
+        "target_domain_id": target_domain.id,
+        "target_domain_name": target_domain.domain,
+        "target_domain_matched": target_domain_match[0],
+        "target_domain_match_score": target_domain_match[1],
+        "standard_domain_id": standard_domain.id,
+        "standard_domain_name": standard_domain.domain,
+        "total_mappings": len(mappings),
+        "success_count": len(results["success"]),
+        "failed_count": len(results["failed"]),
+        "results": results
+    }
+
+async def export_crossmaps_to_json(
+    target_domain_id: str,
+    db: Session
+) -> Dict[str, Any]:
+    """
+    Export ánh xạ sang JSON format
+    
+    Args:
+        target_domain_id: ID của domain đích
+        db: Database session
+        
+    Returns:
+        Dict[str, Any]: Dữ liệu export
+    """
+    # Kiểm tra target domain có tồn tại không
+    target_domain = crud.domain.get(db, id=target_domain_id)
+    if not target_domain or target_domain.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Domain đích không tồn tại hoặc đã bị xóa")
+    
+    # Tìm domain STANDARD
+    standard_domain = db.query(crud.domain.model).filter(
+        crud.domain.model.domain.ilike("STANDARD"),
+        crud.domain.model.deleted_at.is_(None)
+    ).first()
+    
+    if not standard_domain:
+        raise HTTPException(status_code=404, detail="Không tìm thấy domain STANDARD")
+    
+    # Tìm tất cả crossmaps giữa target domain và standard domain
+    crossmaps = db.query(crud.disease_domain_crossmap.model).filter(
+        ((crud.disease_domain_crossmap.model.domain_id_1 == target_domain_id) & 
+         (crud.disease_domain_crossmap.model.domain_id_2 == standard_domain.id)) | 
+        ((crud.disease_domain_crossmap.model.domain_id_1 == standard_domain.id) & 
+         (crud.disease_domain_crossmap.model.domain_id_2 == target_domain_id))
+    ).all()
+    
+    # Tạo mapping dict
+    mappings = {}
+    
+    for crossmap in crossmaps:
+        # Xác định đâu là target disease và standard disease
+        if crossmap.domain_id_1 == target_domain_id:
+            target_disease_id = crossmap.disease_id_1
+            standard_disease_id = crossmap.disease_id_2
+        else:
+            target_disease_id = crossmap.disease_id_2
+            standard_disease_id = crossmap.disease_id_1
+        
+        # Lấy thông tin disease
+        target_disease = crud.disease.get(db, target_disease_id)
+        standard_disease = crud.disease.get(db, standard_disease_id)
+        
+        if target_disease and standard_disease:
+            mappings[target_disease.label] = standard_disease.label
+    
+    return {
+        "target_domain_id": target_domain_id,
+        "target_domain_name": target_domain.domain,
+        "standard_domain_id": standard_domain.id,
+        "standard_domain_name": standard_domain.domain,
+        "mappings": mappings,
+        "total_mappings": len(mappings)
+    } 
