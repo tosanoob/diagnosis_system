@@ -23,7 +23,7 @@ pip3 install datasets google-genai numpy pillow tqdm
 # Kiểm tra API key
 if [ -z "$GEMINI_API_KEY" ]; then
     echo "⚠️  GEMINI_API_KEY not set. Using default key..."
-    export GEMINI_API_KEY="AIzaSyCSrrx68QTb0teEGQIn3dCj7sVRi5iCO1A"
+    export GEMINI_API_KEY="GEMINI_API_KEY"
 fi
 
 # Tạo sample data nếu cần
