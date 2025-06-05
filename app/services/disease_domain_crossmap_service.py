@@ -11,6 +11,39 @@ from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossm
 from app.db.chromadb_service import chromadb_instance
 from app.core.logging import logger
 
+def serialize_domain_object(domain) -> Dict[str, Any]:
+    """
+    Helper function để serialize domain SQLAlchemy object thành dict
+    Loại bỏ SQLAlchemy metadata và relationship fields có thể gây vấn đề serialization
+    """
+    result = {}
+    for k, v in domain.__dict__.items():
+        if k not in ["_sa_instance_state", "diseases", "disease_crossmaps_1", "disease_crossmaps_2"]:
+            result[k] = v
+    return result
+
+def serialize_disease_object(disease) -> Dict[str, Any]:
+    """
+    Helper function để serialize disease SQLAlchemy object thành dict
+    Loại bỏ SQLAlchemy metadata và relationship fields có thể gây vấn đề serialization
+    """
+    result = {}
+    for k, v in disease.__dict__.items():
+        if k not in ["_sa_instance_state", "domain", "article", "diagnosis_logs"]:
+            result[k] = v
+    return result
+
+def serialize_crossmap_object(crossmap) -> Dict[str, Any]:
+    """
+    Helper function để serialize crossmap SQLAlchemy object thành dict
+    Loại bỏ SQLAlchemy metadata và relationship fields có thể gây vấn đề serialization
+    """
+    result = {}
+    for k, v in crossmap.__dict__.items():
+        if k not in ["_sa_instance_state", "disease_1", "domain_1", "disease_2", "domain_2"]:
+            result[k] = v
+    return result
+
 async def get_all_crossmaps(
     skip: int = 0,
     limit: int = 100,
@@ -22,33 +55,28 @@ async def get_all_crossmaps(
     
     result = []
     for crossmap in crossmaps:
-        # Loại bỏ _sa_instance_state
-        crossmap_dict = {k: v for k, v in crossmap.__dict__.items() if k != "_sa_instance_state"}
+        crossmap_dict = serialize_crossmap_object(crossmap)
         
         # Thêm thông tin domain và disease
         if crossmap.disease_id_1:
             disease_1 = crud.disease.get(db, crossmap.disease_id_1)
             if disease_1:
-                disease_dict = {k: v for k, v in disease_1.__dict__.items() if k != "_sa_instance_state"}
-                crossmap_dict["disease_1"] = disease_dict
+                crossmap_dict["disease_1"] = serialize_disease_object(disease_1)
                 
         if crossmap.domain_id_1:
             domain_1 = crud.domain.get(db, crossmap.domain_id_1)
             if domain_1:
-                domain_dict = {k: v for k, v in domain_1.__dict__.items() if k != "_sa_instance_state"}
-                crossmap_dict["domain_1"] = domain_dict
+                crossmap_dict["domain_1"] = serialize_domain_object(domain_1)
                 
         if crossmap.disease_id_2:
             disease_2 = crud.disease.get(db, crossmap.disease_id_2)
             if disease_2:
-                disease_dict = {k: v for k, v in disease_2.__dict__.items() if k != "_sa_instance_state"}
-                crossmap_dict["disease_2"] = disease_dict
+                crossmap_dict["disease_2"] = serialize_disease_object(disease_2)
                 
         if crossmap.domain_id_2:
             domain_2 = crud.domain.get(db, crossmap.domain_id_2)
             if domain_2:
-                domain_dict = {k: v for k, v in domain_2.__dict__.items() if k != "_sa_instance_state"}
-                crossmap_dict["domain_2"] = domain_dict
+                crossmap_dict["domain_2"] = serialize_domain_object(domain_2)
         
         result.append(crossmap_dict)
     
@@ -60,33 +88,28 @@ async def get_crossmap_by_id(crossmap_id: str, db: Session) -> Dict[str, Any]:
     if not crossmap:
         raise HTTPException(status_code=404, detail="Không tìm thấy ánh xạ")
     
-    # Loại bỏ _sa_instance_state
-    result = {k: v for k, v in crossmap.__dict__.items() if k != "_sa_instance_state"}
+    result = serialize_crossmap_object(crossmap)
     
     # Thêm thông tin domain và disease
     if crossmap.disease_id_1:
         disease_1 = crud.disease.get(db, crossmap.disease_id_1)
         if disease_1:
-            disease_dict = {k: v for k, v in disease_1.__dict__.items() if k != "_sa_instance_state"}
-            result["disease_1"] = disease_dict
+            result["disease_1"] = serialize_disease_object(disease_1)
             
     if crossmap.domain_id_1:
         domain_1 = crud.domain.get(db, crossmap.domain_id_1)
         if domain_1:
-            domain_dict = {k: v for k, v in domain_1.__dict__.items() if k != "_sa_instance_state"}
-            result["domain_1"] = domain_dict
+            result["domain_1"] = serialize_domain_object(domain_1)
             
     if crossmap.disease_id_2:
         disease_2 = crud.disease.get(db, crossmap.disease_id_2)
         if disease_2:
-            disease_dict = {k: v for k, v in disease_2.__dict__.items() if k != "_sa_instance_state"}
-            result["disease_2"] = disease_dict
+            result["disease_2"] = serialize_disease_object(disease_2)
             
     if crossmap.domain_id_2:
         domain_2 = crud.domain.get(db, crossmap.domain_id_2)
         if domain_2:
-            domain_dict = {k: v for k, v in domain_2.__dict__.items() if k != "_sa_instance_state"}
-            result["domain_2"] = domain_dict
+            result["domain_2"] = serialize_domain_object(domain_2)
     
     return result
 
@@ -100,8 +123,7 @@ async def get_crossmaps_for_disease(
     
     result = []
     for crossmap in crossmaps:
-        # Loại bỏ _sa_instance_state
-        crossmap_dict = {k: v for k, v in crossmap.__dict__.items() if k != "_sa_instance_state"}
+        crossmap_dict = serialize_crossmap_object(crossmap)
         
         # Xác định disease và domain được ánh xạ tới
         target_disease_id = crossmap.disease_id_1 if crossmap.disease_id_2 == disease_id and crossmap.domain_id_2 == domain_id else crossmap.disease_id_2
@@ -110,13 +132,11 @@ async def get_crossmaps_for_disease(
         # Thêm thông tin domain và disease đích
         target_disease = crud.disease.get(db, target_disease_id)
         if target_disease:
-            disease_dict = {k: v for k, v in target_disease.__dict__.items() if k != "_sa_instance_state"}
-            crossmap_dict["target_disease"] = disease_dict
+            crossmap_dict["target_disease"] = serialize_disease_object(target_disease)
             
         target_domain = crud.domain.get(db, target_domain_id)
         if target_domain:
-            domain_dict = {k: v for k, v in target_domain.__dict__.items() if k != "_sa_instance_state"}
-            crossmap_dict["target_domain"] = domain_dict
+            crossmap_dict["target_domain"] = serialize_domain_object(target_domain)
         
         result.append(crossmap_dict)
     

@@ -22,7 +22,8 @@ from app.services.llm_service import (
     gemini_llm_request,
     openai_to_gemini_history,
     get_gemini_config,
-    general_gemini_request
+    general_gemini_request,
+    AllModelsFailedException
 )
 from app.services.disease_domain_crossmap_service import normalize_disease_name
 from app.constants.enums import EntityType
@@ -349,6 +350,7 @@ async def get_later_diagnosis_v2(chat_history: List, text: str = None) -> Tuple[
 
 async def get_images_with_filter(image_base64: str, filter_labels: List[str]) -> Tuple[List, str, List]:
     """Get images with filter labels"""
+    logger.app_info(f"Retrieving images with filter labels: {filter_labels}")
     image_labels = chromadb_instance.retrieve_image_info(image_base64, n_results=15, filter_labels=filter_labels)
     image_labels = sort_image_results(image_labels, top_k=15)
     # image_labels = [(item[0][:item[0].find('(')].strip(), item[1]) for item in image_labels]
@@ -377,13 +379,16 @@ async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> T
             ).all()
             
             all_labels = [disease.label for disease in diseases]
-            logger.app_info(f"Found {len(all_labels)} diseases in STANDARD domain")
+            # logger.app_info(f"Found {len(all_labels)} diseases in STANDARD domain")
 
         label_documents = [get_document(label, db) for label in all_labels]
         reasoning_prompt = ReasoningPrompt.format_prompt_v3(text, True, format_context(all_labels, label_documents))
     finally:
         db.close()
-        
+    
+    image_labels, label_documents = await get_images_with_filter(image_base64,filter_labels=None)
+    image_labels = [item[0] for item in image_labels]
+
     response = generate_with_image(image_base64, ReasoningPrompt.IMAGE_ONLY_SYSTEM_PROMPT, reasoning_prompt, max_tokens=10000)
     
     # Extract diagnoses from response text
@@ -427,7 +432,7 @@ async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> T
             logger.app_info(f"No good match found for '{llm_label}'")
             
     # Loại bỏ các label trùng lặp
-    llm_labels = list(set(matched_labels))
+    llm_labels = list(set(matched_labels + image_labels))
 
     all_labels, label_documents = await get_images_with_filter(image_base64, llm_labels)
     reasoning_prompt = ReasoningPrompt.format_prompt_analyze_diagnosis_v3(text, True, format_context(all_labels, label_documents))

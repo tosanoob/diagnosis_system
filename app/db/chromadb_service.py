@@ -1,7 +1,7 @@
 """
 Cung cấp dịch vụ ChromaDB cho việc lưu trữ và truy vấn các embeddings
 """
-from chromadb import PersistentClient, Documents, Embeddings, EmbeddingFunction
+from chromadb import HttpClient, Documents, Embeddings, EmbeddingFunction, Settings
 from app.services.llm_service import embedding_request
 from app.services.image_service import encode_base64_images
 from app.core.config import settings
@@ -24,8 +24,12 @@ class ImageEmbeddingFunction(EmbeddingFunction):
         return self.embedding_function(input)
 
 class ChromaDBService:
-    def __init__(self, path: str):
-        self.client = PersistentClient(path=path)
+    def __init__(self):
+        self.client = HttpClient(
+            host=settings.CHROMA_HOST, 
+            port=settings.CHROMA_PORT,
+            settings=Settings(anonymized_telemetry=False)
+        )
         try:
             self.keyword_collection = self.client.get_or_create_collection(
                 settings.ENTITY_COLLECTION, 
@@ -40,7 +44,7 @@ class ChromaDBService:
             self.image_caption_collection = self.client.get_or_create_collection(
                 settings.IMAGE_COLLECTION, 
                 embedding_function=ImageEmbeddingFunction(),
-                metadata={"hnsw:space": "ip"}
+                metadata={"hnsw:space": "cosine"}
                 )
         except Exception as e:
             logger.error(f"Lỗi khi khởi tạo ChromaDB: {str(e)}")
@@ -146,7 +150,7 @@ class ChromaDBService:
                 logger.error("Failed to encode images")
                 return []
                 
-            condition = {"is_disabled": False}
+            condition = { "$and": [{"is_disabled": False}, {"label": {"$ne": ""}}]}
             if filter_labels:
                 if isinstance(filter_labels, str):
                     filter_labels = [filter_labels]
@@ -160,7 +164,8 @@ class ChromaDBService:
                         {"is_disabled": False},
                         {"$or": [{"label": label} for label in filter_labels]}
                     ]}
-                    
+            print(condition)
+            print(settings.IMAGE_COLLECTION)
             # Truy vấn ChromaDB với embeddings
             query_results = self.image_caption_collection.query(
                 query_embeddings=embeddings,
@@ -283,4 +288,4 @@ class ChromaDBService:
         self.image_caption_collection.delete(where={"domain_id": domain_id})
 
 # Khởi tạo instance với đường dẫn từ cấu hình
-chromadb_instance = ChromaDBService(settings.CHROMA_DATA_PATH) 
+chromadb_instance = ChromaDBService() 

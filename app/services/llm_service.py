@@ -10,6 +10,63 @@ from app.constants.enums import QueryType
 from app.core.config import settings
 from app.core.logging import logger
 
+
+class AllModelsFailedException(Exception):
+    """Exception được throw khi tất cả models và API keys đều fail"""
+    def __init__(self, errors: Dict[str, Dict[str, str]]):
+        self.errors = errors  # {api_key: {model: error_message}}
+        error_msg = "Tất cả API keys và models đều fail:\n"
+        for api_key, model_errors in errors.items():
+            error_msg += f"API Key {api_key[:8]}***:\n"
+            for model, error in model_errors.items():
+                error_msg += f"  - {model}: {error}\n"
+        super().__init__(error_msg)
+
+
+def try_gemini_models_with_fallback(func, *args, **kwargs):
+    """
+    Helper function để thử nghiệm các Gemini API keys và models với fallback
+    
+    Args:
+        func: Function cần execute với model và api_key (expect model_name, api_key là 2 parameters đầu tiên)
+        *args, **kwargs: Arguments cho function
+        
+    Returns:
+        Kết quả từ combination (api_key, model) thành công đầu tiên
+        
+    Raises:
+        AllModelsFailedException: Khi tất cả API keys và models đều fail
+    """
+    errors = {}
+    
+    # Lấy danh sách API keys từ config
+    api_keys = settings.GEMINI_API_KEYS
+    models = settings.GEMINI_MODELS
+    
+    # Thử từng API key với tất cả models
+    for api_key in api_keys:
+        api_key_errors = {}
+        
+        for model in models:
+            try:
+                # logger.app_info(f"Thử nghiệm API key {api_key[:8]}*** với model: {model}")
+                # Pass model và api_key như là 2 positional arguments đầu tiên
+                result = func(model, api_key, *args, **kwargs)
+                # logger.app_info(f"API key {api_key[:8]}*** với model {model} thành công")
+                return result
+            except Exception as e:
+                error_msg = str(e)
+                api_key_errors[model] = error_msg
+                logger.app_info(f"API key {api_key[:8]}*** với model {model} fail: {error_msg}")
+                continue
+        
+        # Lưu errors của API key này
+        errors[api_key] = api_key_errors
+    
+    # Nếu tất cả API keys và models đều fail
+    raise AllModelsFailedException(errors)
+
+
 def embedding_request(texts: List[str]) -> List[List[float]]:
     """
     Tạo embedding từ văn bản sử dụng BAAI/bge-m3
@@ -34,57 +91,73 @@ def generate_with_image(
     system_instruction: str, 
     user_instruction: str, 
     mime_type: str = "image/jpeg",
-    model: str = "gemini-1.5-flash",
+    model: str = None,
     temperature: float = 0.01,
     max_tokens: int = 1000
     ):
     """
-    Sử dụng Gemini LLM để tạo nội dung từ hình ảnh.
+    Sử dụng Gemini LLM để tạo nội dung từ hình ảnh với fallback models.
     
     Args:
         image_base64: base64 string hoặc bytes
         system_instruction: Hướng dẫn hệ thống
         user_instruction: Hướng dẫn người dùng
         mime_type: Loại MIME của ảnh
-        model: Tên mô hình
+        model: Tên mô hình (nếu None sẽ dùng fallback logic)
         temperature: Nhiệt độ
         max_tokens: Số token tối đa
         
     Returns:
         str: Kết quả trả về từ LLM
+        
+    Raises:
+        AllModelsFailedException: Khi tất cả models đều fail
     """
-    client = genai.Client(
-        api_key=settings.GEMINI_API_KEY,
-    )
-
-    contents = [
-        types.Content(
-            role="user",
-            parts=[
-                types.Part.from_bytes(data=image_base64, mime_type=mime_type),
-                types.Part.from_text(text=user_instruction),
-            ],
+    def _generate_with_single_model(model_name, api_key):
+        client = genai.Client(
+                api_key=api_key,
         )
-    ]
-    generate_content_config = types.GenerateContentConfig(
-        response_mime_type="text/plain",
-        system_instruction=[
-            types.Part.from_text(text=system_instruction),
-        ],
-        temperature=temperature,
-        max_output_tokens=max_tokens
-    )
 
-    try:
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_bytes(data=image_base64, mime_type=mime_type),
+                    types.Part.from_text(text=user_instruction),
+                ],
+            )
+        ]
+        generate_content_config = types.GenerateContentConfig(
+            response_mime_type="text/plain",
+            system_instruction=[
+                types.Part.from_text(text=system_instruction),
+            ],
+            temperature=temperature,
+            max_output_tokens=max_tokens
+        )
+
         result = client.models.generate_content(
-            model=model,
+            model=model_name,
             contents=contents,
             config=generate_content_config,
         )
         return result.text
-    except Exception as e:
-        logger.error(f"Lỗi khi sử dụng Gemini với ảnh: {str(e)}")
-        return "Không thể phân tích ảnh."
+
+    # Nếu có model cụ thể được chỉ định, chỉ sử dụng model đó với API key đầu tiên
+    if model:
+        try:
+            api_key = settings.GEMINI_API_KEYS[0]  # Sử dụng API key đầu tiên
+            return _generate_with_single_model(model, api_key)
+        except Exception as e:
+                logger.error(f"Lỗi khi sử dụng Gemini với ảnh (model {model}): {str(e)}")
+                raise e
+    
+    # Nếu không có model cụ thể, sử dụng fallback logic với tất cả API keys và models
+    try:
+        return try_gemini_models_with_fallback(_generate_with_single_model)
+    except AllModelsFailedException as e:
+        logger.error(f"Tất cả Gemini API keys và models đều fail: {str(e)}")
+        raise e
 
 def openai_to_gemini_history(history: List[Dict]) -> List[types.Content]:
     """
@@ -161,77 +234,117 @@ def get_gemini_config(
     )
 
 def general_gemini_request(
-    model: str = "gemini-1.5-flash",
+    model: str = None,  # Thay đổi từ settings.GEMINI_MODEL
     contents: List[types.Content] = [],
     config: types.GenerateContentConfig = None
 ) -> str:
     """
-    Gửi yêu cầu đến Gemini LLM
+    Gửi yêu cầu đến Gemini LLM với fallback models
+    
+    Args:
+        model: Tên model cụ thể (nếu None sẽ dùng fallback logic)
+        contents: Nội dung chat
+        config: Cấu hình generate
+        
+    Returns:
+        str: Kết quả từ LLM
+        
+    Raises:
+        AllModelsFailedException: Khi tất cả models đều fail
     """
-    client = genai.Client(
-        api_key=settings.GEMINI_API_KEY,
-    )
-    try:
+    def _request_with_single_model(model_name, api_key):
+        client = genai.Client(
+                api_key=api_key,
+        )
         result = client.models.generate_content(
-            model=model,
+            model=model_name,
             contents=contents,
             config=config,
         )
         return result.text
-    except Exception as e:
-        logger.error(f"Lỗi khi sử dụng Gemini: {str(e)}")
-        return "Không thể xử lý yêu cầu."
+
+    # Nếu có model cụ thể được chỉ định, chỉ sử dụng model đó với API key đầu tiên
+    if model:
+        try:
+            api_key = settings.GEMINI_API_KEYS[0]  # Sử dụng API key đầu tiên
+            return _request_with_single_model(model, api_key)
+        except Exception as e:
+            logger.error(f"Lỗi khi sử dụng Gemini (model {model}): {str(e)}")
+            raise e
+    
+    # Nếu không có model cụ thể, sử dụng fallback logic với tất cả API keys và models
+    try:
+        return try_gemini_models_with_fallback(_request_with_single_model)
+    except AllModelsFailedException as e:
+        logger.error(f"Tất cả Gemini API keys và models đều fail: {str(e)}")
+        raise e
 
 def gemini_llm_request(
         system_instruction: str, 
         user_instruction: str, 
-        model: str = "gemini-1.5-flash", 
+        model: str = None,  # Thay đổi từ settings.GEMINI_MODEL
         temperature: float = 0.0, 
         max_tokens: int = 1000,
         ) -> str:
     """
-    Hàm gửi yêu cầu đến LLM
+    Hàm gửi yêu cầu đến LLM với fallback models
     
     Args:
         system_instruction: Hướng dẫn hệ thống
         user_instruction: Hướng dẫn người dùng
-        model: Mô hình LLM
+        model: Mô hình LLM cụ thể (nếu None sẽ dùng fallback logic)
         temperature: Nhiệt độ
         max_tokens: Số token tối đa
         
     Returns:
         str: Kết quả trả về từ LLM
+        
+    Raises:
+        AllModelsFailedException: Khi tất cả models đều fail
     """
-    client = genai.Client(
-        api_key=settings.GEMINI_API_KEY,
-    )
-    contents = [
-        types.Content(
-            role="user",
-            parts=[
-                types.Part.from_text(text=user_instruction),
-            ],
+    def _request_with_single_model(model_name, api_key):
+        client = genai.Client(
+                api_key=api_key,
         )
-    ]
-    generate_content_config = types.GenerateContentConfig(
-        response_mime_type="text/plain",
-        system_instruction=[
-            types.Part.from_text(text=system_instruction),
-        ],
-        temperature=temperature,
-        max_output_tokens=max_tokens
-    )
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=user_instruction),
+                ],
+            )
+        ]
+        generate_content_config = types.GenerateContentConfig(
+            response_mime_type="text/plain",
+            system_instruction=[
+                types.Part.from_text(text=system_instruction),
+            ],
+            temperature=temperature,
+            max_output_tokens=max_tokens
+        )
 
-    try:
         result = client.models.generate_content(
-            model=model,
+            model=model_name,
             contents=contents,
             config=generate_content_config,
         )
         return result.text
-    except Exception as e:
-        logger.error(f"Lỗi khi sử dụng Gemini: {str(e)}")
-        return "Không thể xử lý yêu cầu."
+
+    # Nếu có model cụ thể được chỉ định, chỉ sử dụng model đó với API key đầu tiên
+    if model:
+        try:
+            api_key = settings.GEMINI_API_KEYS[0]  # Sử dụng API key đầu tiên
+            return _request_with_single_model(model, api_key)
+        except Exception as e:
+            logger.error(f"Lỗi khi sử dụng Gemini (model {model}): {str(e)}")
+            raise e
+    
+    # Nếu không có model cụ thể, sử dụng fallback logic với tất cả API keys và models
+    try:
+        return try_gemini_models_with_fallback(_request_with_single_model)
+    except AllModelsFailedException as e:
+        logger.error(f"Tất cả Gemini API keys và models đều fail: {str(e)}")
+        raise e
 
 def extract_keywords(text: str) -> List[str]:
     """

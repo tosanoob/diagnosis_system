@@ -9,6 +9,17 @@ from sqlalchemy import or_, func
 from app.db import crud
 from app.models.database import DomainCreate, DomainUpdate
 
+def serialize_domain_object(domain) -> Dict[str, Any]:
+    """
+    Helper function để serialize domain SQLAlchemy object thành dict
+    Loại bỏ SQLAlchemy metadata và relationship fields có thể gây vấn đề serialization
+    """
+    result = {}
+    for k, v in domain.__dict__.items():
+        if k not in ["_sa_instance_state", "diseases", "disease_crossmaps_1", "disease_crossmaps_2"]:
+            result[k] = v
+    return result
+
 async def get_all_domains(
     skip: int = 0,
     limit: int = 100,
@@ -32,8 +43,7 @@ async def get_all_domains(
     # Chuyển domain thành dicts phù hợp với JSON
     result = []
     for domain in domains:
-        # Loại bỏ _sa_instance_state
-        domain_dict = {k: v for k, v in domain.__dict__.items() if k != "_sa_instance_state"}
+        domain_dict = serialize_domain_object(domain)
         result.append(domain_dict)
     
     return result, total
@@ -95,8 +105,7 @@ async def get_domain_by_id(domain_id: str, db: Session) -> Dict[str, Any]:
     if domain.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Domain đã bị xóa")
     
-    # Loại bỏ _sa_instance_state
-    result = {k: v for k, v in domain.__dict__.items() if k != "_sa_instance_state"}
+    result = serialize_domain_object(domain)
     
     # Lấy số lượng bệnh thuộc domain này
     disease_count = db.query(crud.disease.model).filter(
@@ -114,8 +123,7 @@ async def get_domain_by_name(domain_name: str, db: Session) -> Optional[Dict[str
     if not domain:
         return None
     
-    # Loại bỏ _sa_instance_state
-    result = {k: v for k, v in domain.__dict__.items() if k != "_sa_instance_state"}
+    result = serialize_domain_object(domain)
     
     # Lấy số lượng bệnh thuộc domain này
     disease_count = db.query(crud.disease.model).filter(
@@ -142,9 +150,7 @@ async def create_domain(domain_data: DomainCreate, db: Session, created_by: Opti
     
     domain = crud.domain.create(db, obj_in=domain_data)
     
-    # Trả về một dict sạch không chứa _sa_instance_state
-    result = {k: v for k, v in domain.__dict__.items() if k != "_sa_instance_state"}
-    return result
+    return serialize_domain_object(domain)
 
 async def update_domain(domain_id: str, domain_data: DomainUpdate, db: Session, updated_by: Optional[str] = None) -> Dict[str, Any]:
     """Cập nhật thông tin domain"""
@@ -169,9 +175,7 @@ async def update_domain(domain_id: str, domain_data: DomainUpdate, db: Session, 
     
     updated_domain = crud.domain.update(db, db_obj=domain, obj_in=domain_data)
     
-    # Trả về một dict sạch không chứa _sa_instance_state
-    result = {k: v for k, v in updated_domain.__dict__.items() if k != "_sa_instance_state"}
-    return result
+    return serialize_domain_object(updated_domain)
 
 async def delete_domain(domain_id: str, soft_delete: bool = True, deleted_by: Optional[str] = None, db: Session = None) -> Dict[str, Any]:
     """Xóa domain và tất cả các bệnh thuộc domain đó"""
@@ -201,8 +205,7 @@ async def delete_domain(domain_id: str, soft_delete: bool = True, deleted_by: Op
     else:
         deleted_domain = crud.domain.remove(db, id=domain_id)
     
-    # Trả về một dict sạch không chứa _sa_instance_state
-    result = {k: v for k, v in deleted_domain.__dict__.items() if k != "_sa_instance_state"}
+    result = serialize_domain_object(deleted_domain)
     result["diseases_deleted"] = len(diseases)
     return result
 
@@ -218,8 +221,7 @@ async def search_domains(search_term: str, skip: int = 0, limit: int = 100, incl
     
     result = []
     for domain in domains:
-        # Loại bỏ _sa_instance_state
-        domain_dict = {k: v for k, v in domain.__dict__.items() if k != "_sa_instance_state"}
+        domain_dict = serialize_domain_object(domain)
         
         # Đếm số lượng bệnh trong domain
         disease_count = db.query(crud.disease.model).filter(

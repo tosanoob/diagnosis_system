@@ -18,7 +18,7 @@ from app.core.logging import logger
 from app.db import crud
 from app.models.database import DomainCreate, DiseaseCreate
 from app.services import domain_service, disease_service, image_service, disease_domain_crossmap_service
-from app.services.llm_service import gemini_llm_request
+from app.services.llm_service import gemini_llm_request, AllModelsFailedException
 from app.db.chromadb_service import chromadb_instance
 
 # Dataset processing constants
@@ -527,13 +527,23 @@ Hãy tạo ánh xạ JSON giữa nhãn bệnh từ dataset mới với nhãn b�
         logger.app_info(f"Đang gọi Gemini để tự động ánh xạ diseases cho dataset {dataset_name}")
         retries = 3
         for _ in range(retries):
-            gemini_response = gemini_llm_request(
-                system_instruction=system_prompt,
-                user_instruction=user_prompt,
-                model="gemini-1.5-flash",
-                temperature=0.1,
-                max_tokens=5000
-            )
+            try:
+                gemini_response = gemini_llm_request(
+                    system_instruction=system_prompt,
+                    user_instruction=user_prompt,
+                        model=None,  # Sử dụng fallback logic với multiple models
+                    temperature=0.1,
+                    max_tokens=5000
+                )
+            except AllModelsFailedException as e:
+                logger.error(f"Tất cả Gemini models đều fail khi tự động ánh xạ: {str(e)}")
+                return {
+                    "success": False,
+                    "message": f"Tất cả Gemini models đều fail: {str(e)}",
+                    "mappings_created": 0,
+                    "gemini_response": None,
+                    "import_result": None
+                }
             
             # Parse JSON response từ Gemini
             try:
