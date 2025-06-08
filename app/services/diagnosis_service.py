@@ -351,12 +351,12 @@ async def get_later_diagnosis_v2(chat_history: List, text: str = None) -> Tuple[
 
 # ----------------- v3 -------------------
 
-async def get_images(image_base64: str) -> Tuple[List, str, List]:
+async def get_images(image_base64: str) -> List[Tuple[str, float]]:
     """Get images with filter labels"""
-    image_labels = chromadb_instance.retrieve_image_info(image_base64, n_results=15)
-    image_labels = group_image_labels(image_labels, top_k=15)
+    image_labels = chromadb_instance.retrieve_image_info(image_base64, n_results=10)
+    image_labels = group_image_labels(image_labels, top_k=5)
     # image_labels = [(item[0][:item[0].find('(')].strip(), item[1]) for item in image_labels]
-    return await prepare_results_async(image_labels, [], [], [])
+    return image_labels
 
 async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> Tuple[List, str, List]:
     """Get first stage diagnosis from image only"""
@@ -385,14 +385,14 @@ async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> T
     finally:
         db.close()
     
-    image_labels, label_documents = await get_images(image_base64)
-    image_labels = [item[0] for item in image_labels]
+    image_labels = await get_images(image_base64)
+    # image_labels = [item[0] for item in image_labels]
     related_data = format_label_name(all_labels)
     reasoning_prompt = ReasoningPrompt.format_prompt_pick_disease(related_data, text)
     response = generate_with_image(image_base64, ReasoningPrompt.IMAGE_ONLY_SYSTEM_PROMPT, reasoning_prompt, max_tokens=10000)
     
     # Extract diagnoses from response text
-    response = response.replace("```python", "").replace("```", "")
+    response = response.split("```python")[1].split("```")[0]
     try:
         llm_labels = json.loads(response)
     except json.JSONDecodeError:
@@ -421,8 +421,10 @@ async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> T
             
     # Loại bỏ các label trùng lặp
     llm_labels = list(set(matched_labels))
+    print(f'LLM labels: {llm_labels}')
+    print(f'Image labels: {image_labels}')
 
-    label_scores = score_fusion(image_labels, llm_labels)
+    label_scores = score_fusion(image_labels, llm_labels, 0.05)
     label_documents = [get_document(label, db) for label, _ in label_scores]
 
     reasoning_prompt = ReasoningPrompt.format_prompt_analyze_diagnosis_v3(text, True, format_context(label_scores, label_documents))
@@ -454,7 +456,7 @@ async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> T
         }
     ]
     
-    return all_labels, response, chat_history
+    return label_scores, response, chat_history
 
 async def get_second_stage_diagnosis_v3(chat_history: List, text: str = None) -> Tuple[str, List]:
     """Get later diagnosis from chat history"""

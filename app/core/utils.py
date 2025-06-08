@@ -534,21 +534,21 @@ def group_image_labels(image_results, top_k=5):
             
         # Sắp xếp theo điểm giảm dần
         labels_with_scores = sorted(labels_with_scores, key=lambda x: x[1], reverse=True)
-        
+
+        if top_k > 0 and top_k < len(labels_with_scores):
+            top_k_labels = labels_with_scores[:top_k]
+        else:
+            top_k_labels = labels_with_scores
+            
         # Lấy điểm của top_k nhãn
-        top_scores = [score for _, score in labels_with_scores]
+        top_scores = [score for _, score in top_k_labels]
         
         # Softmax để tổng điểm = 1
         normalized_scores = softmax(top_scores)
         
-        # Lấy top_k nhãn
-        
         # Tạo kết quả cuối cùng
-        result = [(label, score) for (label, _), score in zip(labels_with_scores, normalized_scores)]
+        result = [(label, score) for (label, _), score in zip(top_k_labels, normalized_scores)]
         logger.app_info(f"Kết quả group_image_labels: {result}")
-
-        if top_k > 0 and top_k < len(result):
-            result = result[:top_k]
         
         return result
     
@@ -566,8 +566,8 @@ def score_fusion(image_labels: List[Tuple[str, float]], llm_labels: List[str], l
     """
     # Tạo dictionary để lưu điểm của các nhãn
     label_scores = {}
-    for label, _ in image_labels:
-        label_scores[label] = 0
+    for label, score in image_labels:
+        label_scores[label] = score
     
     # Cộng điểm cho các nhãn từ LLM
     for label in llm_labels:
