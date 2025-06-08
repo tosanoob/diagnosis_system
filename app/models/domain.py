@@ -30,6 +30,40 @@ Suy luận của bạn có thể không chính xác, nhưng sẽ giúp ích rấ
 Trả lời với văn phong tự nhiên, chuyên nghiệp, giống như đối thoại với người bệnh.
 """
 
+    SYSTEM_PICK_DISEASE_PROMPT = """Bạn là một bác sĩ da liễu giàu kinh nghiệm. Nhiệm vụ của bạn là phân tích ảnh tổn thương da và xác định các bệnh da liễu có thể liên quan.
+
+Dựa trên hình ảnh được cung cấp, hãy trả về danh sách các bệnh da liễu có thể phù hợp từ danh sách bệnh được cung cấp.
+
+QUAN TRỌNG:
+1. Chỉ trả về nhãn bệnh nằm trong danh sách chuẩn được cung cấp
+2. LUÔN bọc kết quả trong cú pháp code Python ```python [...] ```
+3. Trả về kết quả dưới dạng list Python, ví dụ: ```python ["acne", "rosacea"] ```
+4. Nếu ảnh không rõ ràng hoặc không thể chẩn đoán, hãy trả về danh sách trống: ```python [] ```
+5. Bạn có thể chọn nhiều nhãn nếu thấy có nhiều khả năng
+6. LUÔN chỉ trả về list Python được bọc trong ```python ... ```, không bao gồm bất kỳ giải thích nào khác
+
+Đừng bao gồm bất kỳ chẩn đoán nào không nằm trong danh sách chuẩn, ngay cả khi bạn nghĩ chẩn đoán đó là chính xác.
+"""
+
+    USER_PICK_DISEASE_PROMPT = """Phân tích hình ảnh tổn thương da này và xác định các bệnh da liễu có thể phù hợp từ danh sách sau:
+
+{related_data}
+
+Ngoài ra, có một số mô tả đính kèm có thể bổ sung thông tin cho tình trạng tổn thương trên:
+
+{has_text}
+
+Trả về một danh sách Python chứa các nhãn bệnh phù hợp, LUÔN bọc trong cú pháp code Python ```python [...] ```, ví dụ:
+```python
+["PEMPHIGUS", "TRỨNG CÁ (Acne)"]
+```
+
+Nếu không thể chẩn đoán, vẫn trả về danh sách trống với cú pháp code:
+```python
+[]
+```
+"""
+
     USER_PROMPT_FIRST = """Tôi có triệu chứng như sau:
 {has_text}
 
@@ -111,3 +145,7 @@ Trả lời với văn phong tự nhiên, chuyên nghiệp, giống như đối 
         has_text = ReasoningPrompt.HAS_TEXT + "\n" + text if text else ""
         has_image = ReasoningPrompt.HAS_IMAGE + "\n" if image else ""
         return ReasoningPrompt.USER_PROMPT_ANALYZE_DIAGNOSIS_V3.format(has_text=has_text, has_image=has_image, related_data=related_data) 
+
+    @staticmethod
+    def format_prompt_pick_disease(related_data: str, text: str):
+        return ReasoningPrompt.USER_PICK_DISEASE_PROMPT.format(related_data=related_data, has_text=text)

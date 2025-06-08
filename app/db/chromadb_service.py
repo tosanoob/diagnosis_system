@@ -127,8 +127,7 @@ class ChromaDBService:
 
     def retrieve_image_info(self, image_base64: str | list[str],
                             n_results: int = 5,
-                            threshold: float = 0.5,
-                            filter_labels: str |list[str] = None) -> dict:
+                            threshold: float = 0.5) -> dict:
         """
         Hàm tìm ảnh gần nhất với hình ảnh gửi, trả về hình ảnh tương tự, thông tin hình ảnh.
         Args:
@@ -150,20 +149,20 @@ class ChromaDBService:
                 logger.error("Failed to encode images")
                 return []
                 
-            condition = { "$and": [{"is_disabled": False}, {"label": {"$ne": ""}}]}
-            if filter_labels:
-                if isinstance(filter_labels, str):
-                    filter_labels = [filter_labels]
-                if len(filter_labels) == 1:
-                    condition = {"$and": [
-                        {"is_disabled": False},
-                        {"label": filter_labels[0]}
-                    ]}
-                else:
-                    condition = {"$and": [
-                        {"is_disabled": False},
-                        {"$or": [{"label": label} for label in filter_labels]}
-                    ]}
+            condition = {"is_disabled": False}
+            # if filter_labels:
+            #     if isinstance(filter_labels, str):
+            #         filter_labels = [filter_labels]
+            #     if len(filter_labels) == 1:
+            #         condition = {"$and": [
+            #             {"is_disabled": False},
+            #             {"label": filter_labels[0]}
+            #         ]}
+            #     else:
+            #         condition = {"$and": [
+            #             {"is_disabled": False},
+            #             {"$or": [{"label": label} for label in filter_labels]}
+            #         ]}
             print(condition)
             print(settings.IMAGE_COLLECTION)
             # Truy vấn ChromaDB với embeddings
@@ -255,7 +254,7 @@ class ChromaDBService:
                 metadatas=metadatas
             )
 
-    def modify_state_standard_disease(self, label_id: str, label: str, option: Literal["enable", "disable"] = "enable"):
+    def modify_state_disease(self, domain_id: str, domain_disease_id: str, option: Literal["enable", "disable"] = "enable"):
         """
         Cập nhật lại trạng thái enable/disable của bệnh chuẩn
         Args:
@@ -264,16 +263,14 @@ class ChromaDBService:
         """
         is_disabled = True if option == "disable" else False
         update_records = self.image_caption_collection.get(
-            where={"$and": [{"label":label}, {"label_id": label_id}]},
+            where={"$and": [{"domain_id": domain_id}, {"domain_disease_id": domain_disease_id}]},
             include=["metadatas"]
         )
         ids = update_records.get("ids")
         metadatas = update_records.get("metadatas")
         if len(ids) > 0:
-            for item in metadatas:
-                item["is_disabled"] = is_disabled
-                item["label"] = ""
-                item["label_id"] = ""
+            for i in range(len(metadatas)):
+                metadatas[i]["is_disabled"] = is_disabled
             self.image_caption_collection.update(
                 ids=ids,
                 metadatas=metadatas

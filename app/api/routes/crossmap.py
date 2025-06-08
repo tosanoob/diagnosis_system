@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.db.sqlite_service import get_db
 from app.services import disease_domain_crossmap_service
-from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossmapUpdate, DiseaseDomainCrossmapBatchCreate, StandardDomainCrossmapBatchUpdate, CrossmapImportRequest, CrossmapExportResponse
+from app.db import crud
+from app.models.database import DiseaseDomainCrossmapCreate, DiseaseDomainCrossmapUpdate, DiseaseDomainCrossmapBatchCreate, StandardDomainCrossmapBatchUpdate, CrossmapImportRequest
 from app.api.routes.auth import get_current_user, get_admin_user
+from app.core.logging import logger
 
 router = APIRouter()
 
@@ -157,7 +159,7 @@ async def batch_update_standard_domain_crossmaps(
         created_by=current_user["user_id"]
     )
 
-@router.get("/domains/{domain_id1}/{domain_id2}", response_model=List[Dict[str, Any]])
+@router.get("/domains/{domain_id1}/{domain_id2}", response_model=Dict[str, Any])
 async def get_crossmaps_between_domains(
     domain_id1: str = Path(..., description="ID của domain thứ nhất"),
     domain_id2: str = Path(..., description="ID của domain thứ hai"),
@@ -166,18 +168,58 @@ async def get_crossmaps_between_domains(
 ):
     """
     Lấy danh sách các cặp ánh xạ giữa các bệnh từ 2 domain.
-    Trả về danh sách các ánh xạ với định dạng:
-    - crossmap_id: ID của ánh xạ
-    - source_disease_id: ID bệnh ở domain thứ nhất  
-    - target_disease_id: ID bệnh tương ứng ở domain thứ hai
-    - source_disease_label: Tên bệnh nguồn
-    - target_disease_label: Tên bệnh tương ứng ở domain thứ hai
+    Trả về danh sách đầy đủ để client-side có thể tạo ra định dạng export phù hợp.
+    
+    Trả về:
+    - Thông tin về các domain
+    - Danh sách các ánh xạ giữa các bệnh, được nhóm theo bệnh domain đích
     """
-    return await disease_domain_crossmap_service.get_crossmaps_between_domains(
+    crossmaps = await disease_domain_crossmap_service.get_crossmaps_between_domains(
         domain_id1=domain_id1,
         domain_id2=domain_id2,
         db=db
     )
+    
+    # Thêm thông tin về domain
+    domain1 = crud.domain.get(db, domain_id1)
+    domain2 = crud.domain.get(db, domain_id2)
+    
+    # Chuyển đổi dữ liệu để client-side dễ dàng tạo export format
+    result_by_target = {}
+    
+    for crossmap in crossmaps:
+        source_disease_id = crossmap.get("source_disease_id")
+        source_disease_label = crossmap.get("source_disease_label")
+        target_disease_id = crossmap.get("target_disease_id")
+        target_disease_label = crossmap.get("target_disease_label")
+        
+        # Nhóm theo target disease
+        if target_disease_id not in result_by_target:
+            result_by_target[target_disease_id] = {
+                "target_disease_id": target_disease_id,
+                "target_disease_label": target_disease_label,
+                "source_diseases": []
+            }
+        
+        result_by_target[target_disease_id]["source_diseases"].append({
+            "source_disease_id": source_disease_id,
+            "source_disease_label": source_disease_label,
+            "crossmap_id": crossmap.get("crossmap_id")
+        })
+    
+    return {
+        "domain1": {
+            "id": domain_id1,
+            "name": domain1.domain if domain1 else "Unknown"
+        },
+        "domain2": {
+            "id": domain_id2,
+            "name": domain2.domain if domain2 else "Unknown"
+        },
+        "crossmaps": list(result_by_target.values()),
+        "total_target_diseases": len(result_by_target),
+        "total_crossmaps": len(crossmaps)
+    }
 
 @router.post("/import", response_model=Dict[str, Any])
 async def import_crossmaps_from_json(
@@ -187,28 +229,16 @@ async def import_crossmaps_from_json(
 ):
     """
     Import ánh xạ từ JSON format.
-    Nhận vào tên domain đích và một JSON mapping {'tên bệnh domain đích': 'tên bệnh STANDARD'}.
+    Nhận vào tên domain đích và một JSON mapping.
+    Hỗ trợ cả định dạng đơn nhãn: {'tên bệnh domain đích': 'tên bệnh STANDARD'} 
+    và đa nhãn: {'tên bệnh domain đích': ['tên bệnh STANDARD 1', 'tên bệnh STANDARD 2']}.
     Sử dụng fuzzy matching để tìm tên bệnh chính xác và xóa sạch ánh xạ cũ trước khi tạo mới.
     """
+    logger.app_info(f"Nhận yêu cầu import crossmaps cho domain: {import_data.target_domain_name}")
+    
     return await disease_domain_crossmap_service.import_crossmaps_from_json(
         target_domain_name=import_data.target_domain_name,
         mappings=import_data.mappings,
         db=db,
         created_by=current_user["user_id"]
-    )
-
-@router.get("/export/{domain_id}", response_model=CrossmapExportResponse)
-async def export_crossmaps_to_json(
-    domain_id: str = Path(..., description="ID của domain cần export"),
-    db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """
-    Export ánh xạ sang JSON format.
-    Trả về danh sách ánh xạ theo tên các bệnh từ domain đích đến domain STANDARD
-    dưới dạng JSON object {'tên bệnh domain đích': 'tên bệnh domain STANDARD'}.
-    """
-    return await disease_domain_crossmap_service.export_crossmaps_to_json(
-        target_domain_id=domain_id,
-        db=db
     ) 

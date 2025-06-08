@@ -275,12 +275,12 @@ async def update_disease(disease_id: str, disease_data: DiseaseUpdate, db: Sessi
         option = "enable" if updated_disease.included_in_diagnosis else "disable"
         
         # Gọi hàm modify_state_standard_disease để cập nhật trạng thái
-        try:
-            chromadb_instance.modify_state_standard_disease(label_id=label_id, label=label, option=option)
-        except Exception as e:
-            # Log lỗi nhưng không ảnh hưởng đến việc trả về kết quả
-            from app.core.logging import logger
-            logger.error(f"Lỗi khi cập nhật trạng thái bệnh chuẩn trong ChromaDB: {str(e)}")
+        # try:
+        #     chromadb_instance.modify_state_standard_disease(label_id=label_id, label=label, option=option)
+        # except Exception as e:
+        #     # Log lỗi nhưng không ảnh hưởng đến việc trả về kết quả
+        #     from app.core.logging import logger
+        #     logger.error(f"Lỗi khi cập nhật trạng thái bệnh chuẩn trong ChromaDB: {str(e)}")
     
     # Trả về một dict sạch không chứa _sa_instance_state
     result = {k: v for k, v in updated_disease.__dict__.items() if k != "_sa_instance_state"}

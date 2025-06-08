@@ -1,7 +1,7 @@
 """
 Service xử lý logic cho ánh xạ giữa các bệnh thuộc các domain khác nhau
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from rapidfuzz import fuzz, process
@@ -441,10 +441,10 @@ async def batch_update_standard_domain_crossmaps(
                 target_disease_id = crossmap.disease_id_1
             
             # Gọi hàm delete_mapping để xóa trong ChromaDB
-            chromadb_instance.delete_mapping(
-                domain_id=target_domain_id, 
-                domain_disease_id=target_disease_id
-            )
+            # chromadb_instance.delete_mapping(
+            #     domain_id=target_domain_id, 
+            #     domain_disease_id=target_disease_id
+            # )
         except Exception as e:
             logger.error(f"Lỗi khi xóa ánh xạ từ ChromaDB: {str(e)}")
     
@@ -502,17 +502,17 @@ async def batch_update_standard_domain_crossmaps(
             new_crossmap = crud.disease_domain_crossmap.create(db, obj_in=crossmap_data)
             
             # Tạo ánh xạ trong ChromaDB
-            try:
-                chromadb_instance.create_mapping(
-                    domain_id=target_domain_id,
-                    domain_disease_id=target_disease_id,
-                    label_id=standard_disease_id,
-                    label=standard_disease.label
-                )
-            except Exception as e:
-                import traceback
-                print(traceback.format_exc())
-                logger.error(f"Lỗi khi tạo ánh xạ trong ChromaDB: {str(e)}")
+            # try:
+            #     chromadb_instance.create_mapping(
+            #         domain_id=target_domain_id,
+            #         domain_disease_id=target_disease_id,
+            #         label_id=standard_disease_id,
+            #         label=standard_disease.label
+            #     )
+            # except Exception as e:
+            #     import traceback
+            #     print(traceback.format_exc())
+            #     logger.error(f"Lỗi khi tạo ánh xạ trong ChromaDB: {str(e)}")
             
             # Thêm vào kết quả thành công
             results["success"].append({
@@ -731,16 +731,16 @@ def find_best_disease_match(
 
 async def import_crossmaps_from_json(
     target_domain_name: str,
-    mappings: Dict[str, str],
+    mappings: Dict[str, Union[str, List[str]]],
     db: Session,
     created_by: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Import ánh xạ từ JSON format với fuzzy matching
+    Import ánh xạ từ JSON format với fuzzy matching, hỗ trợ multilabel mapping
     
     Args:
         target_domain_name: Tên domain đích
-        mappings: Dict {"tên bệnh domain đích": "tên bệnh STANDARD"}
+        mappings: Dict {"tên bệnh domain đích": "tên bệnh STANDARD" hoặc ["tên bệnh STANDARD 1", "tên bệnh STANDARD 2", ...]}
         db: Database session
         created_by: Người tạo ánh xạ
         
@@ -817,8 +817,12 @@ async def import_crossmaps_from_json(
         "failed": []
     }
     
-    for target_disease_name, standard_disease_name in mappings.items():
+    for target_disease_name, standard_disease_names in mappings.items():
         try:
+            # Chuyển đổi standard_disease_names thành list nếu là string
+            if isinstance(standard_disease_names, str):
+                standard_disease_names = [standard_disease_names]
+            
             # Sử dụng improved fuzzy matching cho target disease
             target_match_result = find_best_disease_match(
                 query_name=target_disease_name,
@@ -830,81 +834,113 @@ async def import_crossmaps_from_json(
             if not target_match_result:
                 results["failed"].append({
                     "target_disease_name": target_disease_name,
-                    "standard_disease_name": standard_disease_name,
+                    "standard_disease_names": standard_disease_names,
                     "error": f"Không tìm thấy bệnh khớp với '{target_disease_name}' trong domain đích"
                 })
                 continue
             
             target_disease, target_matched_label, target_score = target_match_result
             
-            # Sử dụng improved fuzzy matching cho standard disease
-            standard_match_result = find_best_disease_match(
-                query_name=standard_disease_name,
-                disease_labels=standard_disease_labels,
-                diseases=standard_diseases,
-                min_score=60
-            )
+            # Xử lý từng standard disease name
+            standard_matches = []
+            failed_standard_names = []
             
-            if not standard_match_result:
+            for standard_disease_name in standard_disease_names:
+                # Sử dụng improved fuzzy matching cho standard disease
+                standard_match_result = find_best_disease_match(
+                    query_name=standard_disease_name,
+                    disease_labels=standard_disease_labels,
+                    diseases=standard_diseases,
+                    min_score=60
+                )
+                
+                if not standard_match_result:
+                    failed_standard_names.append({
+                        "name": standard_disease_name,
+                        "reason": f"Không tìm thấy bệnh khớp với '{standard_disease_name}' trong domain STANDARD"
+                    })
+                    continue
+                
+                standard_disease, standard_matched_label, standard_score = standard_match_result
+                standard_matches.append({
+                    "disease": standard_disease,
+                    "matched_label": standard_matched_label,
+                    "score": standard_score
+                })
+            
+            # Nếu không tìm thấy bất kỳ standard disease nào, thêm vào danh sách thất bại
+            if not standard_matches:
                 results["failed"].append({
                     "target_disease_name": target_disease_name,
-                    "standard_disease_name": standard_disease_name,
-                    "error": f"Không tìm thấy bệnh khớp với '{standard_disease_name}' trong domain STANDARD"
+                    "standard_disease_names": standard_disease_names,
+                    "error": "Không tìm thấy bất kỳ bệnh STANDARD nào khớp",
+                    "failed_standard_names": failed_standard_names
                 })
                 continue
             
-            standard_disease, standard_matched_label, standard_score = standard_match_result
+            # Tạo crossmap cho mỗi cặp (target_disease, standard_disease)
+            successful_crossmaps = []
             
-            # Tạo crossmap mới
-            crossmap_data = DiseaseDomainCrossmapCreate(
-                disease_id_1=standard_disease.id,
-                domain_id_1=standard_domain.id,
-                disease_id_2=target_disease.id,
-                domain_id_2=target_domain.id
-            )
-            
-            new_crossmap = crud.disease_domain_crossmap.create(db, obj_in=crossmap_data)
-            
-            # Tạo ánh xạ trong ChromaDB
-            try:
-                chromadb_instance.create_mapping(
-                    domain_id=target_domain.id,
-                    domain_disease_id=target_disease.id,
-                    label_id=standard_disease.id,
-                    label=standard_disease.label
+            for standard_match in standard_matches:
+                standard_disease = standard_match["disease"]
+                standard_matched_label = standard_match["matched_label"]
+                standard_score = standard_match["score"]
+                
+                # Tạo crossmap mới
+                crossmap_data = DiseaseDomainCrossmapCreate(
+                    disease_id_1=standard_disease.id,
+                    domain_id_1=standard_domain.id,
+                    disease_id_2=target_disease.id,
+                    domain_id_2=target_domain.id
                 )
-            except Exception as e:
-                logger.error(f"Lỗi khi tạo ánh xạ trong ChromaDB: {str(e)}")
+                
+                new_crossmap = crud.disease_domain_crossmap.create(db, obj_in=crossmap_data)
+                
+                # Tạo ánh xạ trong ChromaDB
+                try:
+                    chromadb_instance.create_mapping(
+                        domain_id=target_domain.id,
+                        domain_disease_id=target_disease.id,
+                        label_id=standard_disease.id,
+                        label=standard_disease.label
+                    )
+                except Exception as e:
+                    logger.error(f"Lỗi khi tạo ánh xạ trong ChromaDB: {str(e)}")
+                
+                successful_crossmaps.append({
+                    "id": new_crossmap.id,
+                    "standard_disease_name": standard_disease.label,
+                    "standard_disease_matched": standard_matched_label,
+                    "standard_disease_id": standard_disease.id,
+                    "standard_match_score": standard_score
+                })
             
+            # Thêm vào danh sách thành công
             results["success"].append({
-                "id": new_crossmap.id,
                 "target_disease_name": target_disease_name,
                 "target_disease_matched": target_matched_label,
                 "target_disease_id": target_disease.id,
-                "standard_disease_name": standard_disease_name,
-                "standard_disease_matched": standard_matched_label,
-                "standard_disease_id": standard_disease.id,
                 "target_match_score": target_score,
-                "standard_match_score": standard_score
+                "crossmaps": successful_crossmaps,
+                "failed_standard_names": failed_standard_names
             })
             
         except Exception as e:
+            import traceback
+            logger.error(traceback.format_exc())
             results["failed"].append({
                 "target_disease_name": target_disease_name,
-                "standard_disease_name": standard_disease_name,
+                "standard_disease_names": standard_disease_names,
                 "error": str(e)
             })
     
     return {
         "target_domain_id": target_domain.id,
         "target_domain_name": target_domain.domain,
-        "target_domain_matched": target_domain_match[0],
-        "target_domain_match_score": target_domain_match[1],
         "standard_domain_id": standard_domain.id,
         "standard_domain_name": standard_domain.domain,
-        "total_mappings": len(mappings),
-        "success_count": len(results["success"]),
-        "failed_count": len(results["failed"]),
+        "total_success": len(results["success"]),
+        "total_failed": len(results["failed"]),
         "results": results
     }
 

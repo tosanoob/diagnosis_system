@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -110,7 +110,7 @@ class StandardDomainCrossmapBatchUpdate(BaseModel):
 class CrossmapImportRequest(BaseModel):
     """Model cho request import crossmap từ JSON"""
     target_domain_name: str
-    mappings: Dict[str, str]  # {"tên bệnh domain đích": "tên bệnh STANDARD"}
+    mappings: Dict[str, Union[str, List[str]]]  # {"tên bệnh domain đích": "tên bệnh STANDARD" hoặc ["tên bệnh STANDARD 1", "tên bệnh STANDARD 2", ...]}
     
     model_config = {
         "json_schema_extra": {
@@ -120,36 +120,38 @@ class CrossmapImportRequest(BaseModel):
                     "mappings": {
                         "Viêm phổi": "Pneumonia",
                         "Đau đầu": "Headache",
-                        "Sốt cao": "Fever"
+                        "Sốt cao": "Fever",
+                        "Actinic keratoses": ["UNG THƯ TẾ BÀO VẢY", "UNG THƯ TẾ BÀO ĐÁY"]
                     }
                 }
             ]
         }
     }
 
-class CrossmapExportResponse(BaseModel):
-    """Model cho response export crossmap sang JSON"""
-    target_domain_id: str
+class MultilabelCrossmapImportRequest(BaseModel):
+    """
+    Model cho request import multilabel crossmap từ JSON.
+    Được giữ lại để tương thích ngược, nhưng khuyến khích sử dụng CrossmapImportRequest
+    vì nó đã hỗ trợ cả đơn nhãn và đa nhãn.
+    """
     target_domain_name: str
-    standard_domain_id: str
-    standard_domain_name: str
-    mappings: Dict[str, str]  # {"tên bệnh domain đích": "tên bệnh STANDARD"}
-    total_mappings: int
+    mappings: Dict[str, List[str]]  # {"tên bệnh domain đích": ["tên bệnh STANDARD 1", "tên bệnh STANDARD 2", ...]}
     
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
-                    "target_domain_id": "domain-uuid-123",
-                    "target_domain_name": "ICD-10",
-                    "standard_domain_id": "standard-domain-uuid",
-                    "standard_domain_name": "STANDARD",
+                    "target_domain_name": "HAM10000",
                     "mappings": {
-                        "Viêm phổi": "Pneumonia",
-                        "Đau đầu": "Headache",
-                        "Sốt cao": "Fever"
-                    },
-                    "total_mappings": 3
+                        "Actinic keratoses": [
+                            "UNG THƯ TẾ BÀO VẢY (Squamous cell carcinoma-SCC)",
+                            "UNG THƯ TẾ BÀO ĐÁY (Basal cell carcinoma - BCC)",
+                            "BỆNH DA DO ÁNH SÁNG (Photodermatosis)"
+                        ],
+                        "Basal cell carcinoma": [
+                            "UNG THƯ TẾ BÀO ĐÁY (Basal cell carcinoma - BCC)"
+                        ]
+                    }
                 }
             ]
         }

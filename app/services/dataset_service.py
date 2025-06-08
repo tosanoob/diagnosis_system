@@ -328,8 +328,6 @@ async def process_images_with_metadata(
             item_metadata["domain_name"] = domain_name
             item_metadata["domain_disease"] = label
             item_metadata["domain_disease_id"] = label_to_disease_id[label]
-            item_metadata["label"] = ""
-            item_metadata["label_id"] = ""
             item_metadata["is_disabled"] = False
             batch_metadata.append(item_metadata)
         
@@ -497,31 +495,33 @@ async def auto_map_diseases_with_gemini(
         new_disease_labels = [disease["label"] for disease in new_diseases]
         standard_disease_labels = [disease.label for disease in standard_diseases]
         
-        system_prompt = f"""Bạn là một chuyên gia y khoa có chuyên môn về phân loại và ánh xạ các thuật ngữ y tế.
+        SYSTEM_INSTRUCTION = """Bạn là một chuyên gia trong cả lĩnh vực bệnh da liễu và khoa học dữ liệu. Nhiệm vụ của bạn là nghiên cứu và phân nhóm các nhãn bệnh liên quan đến nhau để đạt hiệu quả tối đa trong việc chẩn đoán bệnh từ hình ảnh da liễu."""
 
-Nhiệm vụ: Tạo ánh xạ giữa các nhãn bệnh từ dataset "{dataset_name}" với các nhãn bệnh chuẩn trong hệ thống.
+        USER_INSTRUCTION = f"""Bạn được cung cấp các thông tin sau:
+- Một bộ 65 bệnh chuẩn lấy từ dữ liệu của Bộ Y tế Việt Nam, về các bệnh da liễu thường gặp và cách phòng ngừa, điều trị bệnh da liễu tương ứng
+- Một danh sách các nhãn bệnh từ một bộ dataset khác.
 
-Nguyên tắc ánh xạ:
-1. Tìm các nhãn bệnh chuẩn có ý nghĩa tương đương hoặc gần nhất với từng nhãn từ dataset mới
-2. Ưu tiên ánh xạ chính xác về mặt y khoa
-3. Nếu không có nhãn chuẩn phù hợp, có thể bỏ qua nhãn đó
-4. Đảm bảo mỗi nhãn từ dataset mới chỉ ánh xạ tới một nhãn chuẩn
+Nhiệm vụ của bạn là thực hiện ánh xạ sau: với mỗi nhãn bệnh từ dataset ngoài, hãy liệt kê một danh sách các nhãn bệnh chuẩn CÓ LIÊN QUAN hoặc có TƯƠNG ĐỒNG CAO với nhãn đó.
+Mục đích của ánh xạ này là thực hiện encode một nhãn bên ngoài thành one-hot encoding của 65 bệnh chuẩn ở trên. Do đó, hãy đảm bảo ánh xạ này thật chuẩn, không dư thừa cũng không thiếu sót.
 
-Định dạng output: JSON object với key là nhãn từ dataset mới, value là nhãn chuẩn tương ứng.
-Ví dụ: {{"Viêm da": "Dermatitis", "Mụn trứng cá": "Acne"}}
+Ví dụ: 
+"Actinic Keratosis Basal Cell Carcinoma and other Malignant Lesions" => ['DÀY SỪNG ÁNH SÁNG', 'UNG THƯ BIỂU MÔ TẾ BÀO ĐÁY', 'UNG THƯ TẾ BÀO HẮC TỐ', ...] hoặc các bệnh liên quan khác
 
-Chỉ trả về JSON object, không cần giải thích thêm."""
+CHÚ Ý: ở ví dụ trên có thể không giống với 65 bệnh chuẩn, nhưng bạn phải sinh ra ánh xạ chính xác sang tên của các bệnh chuẩn trong 65 bệnh đã cung cấp.
 
-        user_prompt = f"""Dataset: {dataset_name}
-Domain mới: {domain_name}
+Sau đây là thông tin về các bệnh chuẩn:
 
-Nhãn bệnh từ dataset mới:
-{chr(10).join(f'- {label}' for label in new_disease_labels)}
-
-Nhãn bệnh chuẩn có sẵn:
+**STANDARD DISEASES**
 {chr(10).join(f'- {label}' for label in standard_disease_labels)}
 
-Hãy tạo ánh xạ JSON giữa nhãn bệnh từ dataset mới với nhãn bệnh chuẩn phù hợp nhất."""
+**EXTERNAL DATASET LABELS**
+{chr(10).join(f'- {label}' for label in new_disease_labels)}
+
+Hãy đảm bảo đọc kỹ thông tin của các bệnh ở STANDARD DISEASES, suy luận từng bệnh ở EXTERNAL DATASET LABELS và đưa ra kết quả phù hợp ở dạng JSON, với key là các nhãn ở EXTERNAL DATASET LABELS và value là danh sách các nhãn bệnh chuẩn (STANDARD DISEASES) có liên quan hoặc tương đồng cao với nhãn đó.
+Đảm bảo bạn ghi chính xác tên bệnh ở STANDARD DISEASES, ngay cả phần trong dấu ngoặc.
+Bạn có thể suy luận để cải thiện câu trả lời của mình, nhưng không được thêm bất kỳ thông tin nào không liên quan.
+Đảm bảo kết quả của bạn là một JSON object hợp lệ, đặt trong cú pháp ```json và ```.
+"""
 
         # Gọi Gemini API
         logger.app_info(f"Đang gọi Gemini để tự động ánh xạ diseases cho dataset {dataset_name}")
@@ -529,8 +529,8 @@ Hãy tạo ánh xạ JSON giữa nhãn bệnh từ dataset mới với nhãn b�
         for _ in range(retries):
             try:
                 gemini_response = gemini_llm_request(
-                    system_instruction=system_prompt,
-                    user_instruction=user_prompt,
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    user_instruction=USER_INSTRUCTION,
                         model=None,  # Sử dụng fallback logic với multiple models
                     temperature=0.1,
                     max_tokens=5000
