@@ -392,12 +392,13 @@ async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> T
     response = generate_with_image(image_base64, ReasoningPrompt.IMAGE_ONLY_SYSTEM_PROMPT, reasoning_prompt, max_tokens=10000)
     
     # Extract diagnoses from response text
-    response = response.split("```python")[1].split("```")[0]
+    llm_labels = []
     try:
-        llm_labels = json.loads(response)
-    except json.JSONDecodeError:
+        llm_labels = response.split("```python")[1].split("```")[0]
+        llm_labels = json.loads(llm_labels)
+    except:
         try:
-            llm_labels = eval(response)
+            llm_labels = eval(llm_labels)
         except Exception as e:
             logger.app_info(f"Error parsing LLM response: {e}")
             llm_labels = []
