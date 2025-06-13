@@ -188,7 +188,7 @@ def parse_args():
     parser.add_argument(
         "--model_dir",
         type=str,
-        default="/home/cuong/workdir/src/chatbot-agentic/query_system/runtime/trained_model/efficientnet_v2_m",
+        default="runtime/trained_model/efficientnet_v2_m",
         help="Đường dẫn tới thư mục chứa model đã train (default: %(default)s)"
     )
     

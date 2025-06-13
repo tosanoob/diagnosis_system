@@ -265,7 +265,7 @@ class ArticleBase(BaseModel):
     content: Optional[str] = None
 
 class ArticleCreate(ArticleBase):
-    pass
+    created_by: Optional[str] = None
 
 class ArticleUpdate(ArticleBase):
     title: Optional[str] = None

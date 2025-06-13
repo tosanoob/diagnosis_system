@@ -124,9 +124,8 @@ async def create_article(article_data: ArticleCreate, creator_id: Optional[str],
         creator = crud.user.get(db, id=creator_id)
         if not creator:
             raise HTTPException(status_code=404, detail="Người dùng không tồn tại")
-        article_dict = article_data.model_dump()
-        article_dict["created_by"] = creator_id
-        article_data = ArticleCreate(**article_dict)
+        # Gán trực tiếp created_by vào article_data
+        article_data.created_by = creator_id
     
     article = crud.article.create(db, obj_in=article_data)
     
