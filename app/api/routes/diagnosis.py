@@ -95,7 +95,7 @@ async def get_image_only_multi_turn_diagnosis(request: ImageOnlyMultiTurnRequest
             raise HTTPException(status_code=400, detail="Cần cung cấp image_base64 hoặc chat_history chứa image")
             
         logger.app_info(f"Nhận request chẩn đoán: image={bool(request.image_base64)}")
-
+        all_labels = []
         if request.chat_history:
             response, chat_history = await get_second_stage_diagnosis_v3(request.chat_history, request.text)
         else:
