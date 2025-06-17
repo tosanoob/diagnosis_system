@@ -475,3 +475,36 @@ Không đưa ra chẩn đoán hoặc điều trị. Chỉ mô tả những gì q
     )
     
     return caption
+
+def llm_score_labels(image_base64: str, labels: List[str], top_k: int = 5) -> List[str]:
+    """
+    Chọn các nhãn có khả năng cao nhất từ danh sách các nhãn
+    """
+    system_prompt = """Bạn là mô hình phân loại và chẩn đoán hình ảnh bệnh da liễu. 
+Nhiệm vụ của bạn là xác định xác suất phần trăm các nhãn bệnh từ danh sách nhãn bệnh (labels) và hình ảnh được cung cấp."""
+    user_prompt = f"""Dựa vào hình ảnh được cung cấp, hãy đưa ra xác suất phần trăm các nhãn bệnh từ danh sách nhãn bệnh sau: 
+{labels}
+
+Định dạng output:
+```python
+[
+    {{
+        "label": "Bệnh tật",
+        "probability": 0.95
+    }},
+    {{
+        "label": "Bệnh tật khác",
+        "probability": 0.05
+    }}
+]
+```
+
+Chỉ phản hồi theo đúng định dạng output, không có bất kỳ text nào khác.
+"""
+    caption = generate_with_image(
+        image_base64=image_base64,
+        system_instruction=system_prompt,
+        user_instruction=user_prompt
+    )
+    
+    return caption

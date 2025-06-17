@@ -581,3 +581,11 @@ def score_fusion(image_labels: List[Tuple[str, float]], llm_labels: List[str], l
     normalized_scores = softmax(scores)
     result = [(label, score) for (label, _), score in zip(label_with_scores, normalized_scores)]
     return result
+
+def bare_union(image_labels: List[Tuple[str, float]], llm_labels: List[str], llm_weight: float = 0.5):
+    """
+    Hợp nhất thuần túy các nhãn từ hình ảnh và LLM, không tính điểm
+    """
+    all_labels = [item[0] for item in image_labels] + llm_labels
+    all_labels = list(set(all_labels))
+    return [(label, None) for label in all_labels]

@@ -39,7 +39,8 @@ from app.core.utils import (
     labels_to_folder,
     group_image_labels,
     format_label_name,
-    score_fusion
+    score_fusion,
+    bare_union
 )
 from app.core.logging import logger
 
@@ -425,7 +426,8 @@ async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> T
     print(f'LLM labels: {llm_labels}')
     print(f'Image labels: {image_labels}')
 
-    label_scores = score_fusion(image_labels, llm_labels, 0.05)
+    # label_scores = score_fusion(image_labels, llm_labels, 0.05)
+    label_scores = bare_union(image_labels, llm_labels, 0.05)
     label_documents = [get_document(label, db) for label, _ in label_scores]
 
     reasoning_prompt = ReasoningPrompt.format_prompt_analyze_diagnosis_v3(text, True, format_context(label_scores, label_documents))
