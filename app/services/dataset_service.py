@@ -532,7 +532,7 @@ Bạn có thể suy luận để cải thiện câu trả lời của mình, nh�
                     system_instruction=SYSTEM_INSTRUCTION,
                     user_instruction=USER_INSTRUCTION,
                         model=None,  # Sử dụng fallback logic với multiple models
-                    temperature=0.1,
+                    temperature=0.0,
                     max_tokens=5000
                 )
             except AllModelsFailedException as e:

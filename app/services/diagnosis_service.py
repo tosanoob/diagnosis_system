@@ -362,6 +362,52 @@ async def get_images(image_base64: str) -> List[Tuple[str, float]]:
 async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> Tuple[List, str, List]:
     """Get first stage diagnosis from image only"""
     # Get database session for both querying diseases and getting documents
+    try:
+        response = generate_with_image(
+            image_base64, 
+            ReasoningPrompt.BASIC_CLASSIFY_PROMPT_SYSTEM, 
+            ReasoningPrompt.BASIC_CLASSIFY_PROMPT_USER, 
+            max_tokens=50
+        )
+        print(f'Response: {response}')
+        if response != "Da liễu":
+            label_scores = []
+            response_new = generate_with_image(
+                image_base64, 
+                ReasoningPrompt.BASIC_RESPONSE_SYSTEM, 
+                ReasoningPrompt.BASIC_RESPONSE_USER, 
+                max_tokens=10000
+            )
+            print(f'Response: {response_new}')
+            chat_history = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": ReasoningPrompt.BASIC_RESPONSE_USER
+                        } if text else None,
+                        {
+                            "type": "image",
+                            "image": image_base64,
+                            "mime_type": "image/jpeg"
+                        }
+                    ]
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": response_new
+                        }
+                    ]
+                }
+            ]
+            return [], response_new, chat_history
+    except Exception as e:
+        logger.app_info(f"Error: {e}")
+    
     db = next(get_db())
     try:
         # Query tất cả bệnh trong domain STANDARD từ database
@@ -424,11 +470,21 @@ async def get_first_stage_diagnosis_v3(image_base64: str, text: str = None) -> T
     # Loại bỏ các label trùng lặp
     llm_labels = list(set(matched_labels))
     print(f'LLM labels: {llm_labels}')
+    image_labels = [item for item in image_labels if item[0] in all_labels]
     print(f'Image labels: {image_labels}')
 
     # label_scores = score_fusion(image_labels, llm_labels, 0.05)
     label_scores = bare_union(image_labels, llm_labels, 0.05)
     label_documents = [get_document(label, db) for label, _ in label_scores]
+    
+    # eliminate_prompt = ReasoningPrompt.format_prompt_eliminate_impossible_disease(text, True, format_context(label_scores, label_documents))
+    # eliminate_response = generate_with_image(image_base64, ReasoningPrompt.ELIMINATE_IMPOSSIBLE_DISEASE_PROMPT_SYSTEM, eliminate_prompt, max_tokens=10000)
+    # print(f'Eliminate response: {eliminate_response}')
+    # eliminate_response = eliminate_response.split("```python")[1].split("```")[0]
+    # eliminate_response = eval(eliminate_response)
+    # print(f'Eliminate response: {eliminate_response}')
+    # label_scores = [item for item in label_scores if item[0] not in eliminate_response]
+    # label_documents = [item for item in label_documents if item[0] not in eliminate_response]
 
     reasoning_prompt = ReasoningPrompt.format_prompt_analyze_diagnosis_v3(text, True, format_context(label_scores, label_documents))
     response = generate_with_image(image_base64, ReasoningPrompt.IMAGE_ONLY_SYSTEM_PROMPT, reasoning_prompt, max_tokens=10000)

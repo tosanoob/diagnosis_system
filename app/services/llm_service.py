@@ -92,7 +92,7 @@ def generate_with_image(
     user_instruction: str, 
     mime_type: str = "image/jpeg",
     model: str = None,
-    temperature: float = 0.01,
+    temperature: float = 0.0,
     max_tokens: int = 1000
     ):
     """
@@ -211,6 +211,8 @@ def openai_to_gemini_history(history: List[Dict]) -> List[types.Content]:
         gemini_content_parts = []
         if isinstance(item["content"], list):
             for content in item["content"]:
+                if not content:
+                    continue
                 if content["type"] == "text":
                     gemini_content_parts.append(types.Part.from_text(text=content["text"]))
                 elif content["type"] == "image":

@@ -117,6 +117,52 @@ Hãy phân tích trường hợp của bệnh nhân, dựa trên mô tả, hình
 Trả lời với văn phong tự nhiên, chuyên nghiệp, giống như đối thoại với người bệnh.
 """
 
+    ELIMINATE_IMPOSSIBLE_DISEASE_PROMPT_SYSTEM = """Bạn là một bác sĩ da liễu giàu kinh nghiệm. Nhiệm vụ của bạn là phân tích ảnh tổn thương da và xác định các bệnh da liễu có thể liên quan.
+Bạn được cung cấp một hình ảnh và một số các chẩn đoán có thể liên quan, cùng với thông tin chi tiết.
+Nhiệm vụ của bạn là loại bỏ những chẩn đoán hoàn toàn không phù hợp với hình ảnh được cung cấp.
+
+Ví dụ: hình ảnh cho thấy tổn thương ở vùng lưng, nhưng chẩn đoán cung cấp là "BỆNH CANDIDA SINH DỤC" hay "BỆNH NẤM MÓNG" thì không phù hợp.
+Bạn sẽ trả lời:
+```python
+["BỆNH CANDIDA SINH DỤC", "BỆNH NẤM MÓNG"]
+```
+
+QUAN TRỌNG:
+1. Chỉ trả về nhãn bệnh nằm trong danh sách được cung cấp với cú pháp và từ khóa chính xác.
+2. LUÔN bọc kết quả cuối cùng trong cú pháp list Python ```python ["nhãn bệnh", "nhãn bệnh"] ```
+3. Bạn có thể suy luận thêm để xác định chính xác kết quả.
+4. Nếu ảnh không rõ ràng/không thể xác định hoặc không có bệnh không phù hợp, hãy trả về danh sách trống: ```python [] ```
+"""
+
+    ELIMINATE_IMPOSSIBLE_DISEASE_PROMPT_USER = """Bệnh nhân khám bệnh có triệu chứng như sau:
+{has_text}
+
+{has_image}
+
+Chẩn đoán đưa ra các khả năng sau:
+{related_data}
+
+Hãy loại bỏ những chẩn đoán không phù hợp với hình ảnh được cung cấp.
+Bạn có thể suy luận, nhưng đảm bảo câu trả lời cuối cùng là một danh sách Python chứa các nhãn bệnh phù hợp, theo định dạng ````python [...] `````
+"""
+
+    BASIC_CLASSIFY_PROMPT_SYSTEM = """Bạn là một hệ thống phân biệt hình ảnh, nhiệm vụ của bạn là phân loại một ảnh đầu vào thành 2 nhóm hình ảnh cụ thể."""
+
+    BASIC_CLASSIFY_PROMPT_USER = """Bạn được cung cấp một hình ảnh đầu vào, hãy phân loại hình ảnh này vào một trong 2 nhóm sau:
+- "Da liễu": Hình ảnh liên quan đến da liễu, có thể có tổn thương da và cần chẩn đoán
+- "Không liên quan đến da liễu": Hình ảnh không liên quan đến da liễu, không có tổn thương da hoặc có những yếu tố nhẹ (rám nắng, nám da, tàn nhang,...) không nghiêm trọng và không cần chẩn đoán chuyên sâu.
+Trả lời với duy nhất một cụm từ khóa thể hiện nhóm mà bạn đã phân loại: "Da liễu" hoặc "Không liên quan đến da liễu"
+    """
+
+    BASIC_RESPONSE_SYSTEM = """Bạn là một hệ thống chẩn đoán bệnh da liễu, nhiệm vụ của bạn là dựa vào hình ảnh đầu vào, đưa ra chẩn đoán sơ bộ cho trường hợp của tôi."""
+
+    BASIC_RESPONSE_USER = """Bạn được cung cấp một hình ảnh đầu vào, hãy dựa vào hình ảnh này để đưa ra chẩn đoán sơ bộ cho trường hợp của tôi.
+Trả lời với văn phong tự nhiên, chuyên nghiệp, giống như đối thoại với người bệnh.
+Nếu như hình ảnh không liên quan đến bệnh da liễu, hãy lịch sự từ chối, ví dụ:
+
+- (bạn được cung cấp hình ảnh của một con mèo lông dài màu trắng)
+Trả lời: "Hình ảnh được cung cấp cho thấy có một con mèo lông dài màu trắng, không liên quan đến bệnh da liễu. Tôi chỉ có thể hỗ trợ chẩn đoán sơ bộ đối với các hình ảnh bệnh lý da liễu."
+"""
 
     @staticmethod
     def format_prompt(text: str | None, image: bool, related_data: str):
@@ -149,3 +195,9 @@ Trả lời với văn phong tự nhiên, chuyên nghiệp, giống như đối 
     @staticmethod
     def format_prompt_pick_disease(related_data: str, text: str):
         return ReasoningPrompt.USER_PICK_DISEASE_PROMPT.format(related_data=related_data, has_text=text)
+
+    @staticmethod
+    def format_prompt_eliminate_impossible_disease(text: str, image: bool, related_data: str):
+        has_text = ReasoningPrompt.HAS_TEXT + "\n" + text if text else ""
+        has_image = ReasoningPrompt.HAS_IMAGE + "\n" if image else ""
+        return ReasoningPrompt.ELIMINATE_IMPOSSIBLE_DISEASE_PROMPT_USER.format(has_text=has_text, has_image=has_image, related_data=related_data)
